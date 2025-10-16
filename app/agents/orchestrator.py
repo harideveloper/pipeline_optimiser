@@ -1,6 +1,6 @@
 """
 CI/CD Pipeline Optimisation Orchestrator - LangGraph Version
-Refactored for clarity, maintainability, and coding standards.
+Refactored to include DB integration (auto-increment repo_id)
 """
 
 import os
@@ -10,11 +10,16 @@ from typing_extensions import Literal
 
 from langgraph.graph import StateGraph, END
 
+from app.db import db  # DB helper module
+
 logger = logging.getLogger(__name__)
 
-
+# ---------------------------
+# PIPELINE STATE
+# ---------------------------
 class PipelineState(TypedDict):
     """State that flows through the pipeline workflow."""
+    repo_id: int
     repo_url: str
     pipeline_path: str
     build_log_path: Optional[str]
@@ -28,9 +33,12 @@ class PipelineState(TypedDict):
 
     optimised_yaml: str
     pr_url: Optional[str]
+    run_id: Optional[int]
     error: Optional[str]
 
-
+# ---------------------------
+# ORCHESTRATOR
+# ---------------------------
 class PipelineOrchestrator:
     """
     Orchestrates CI/CD optimisation using LangGraph.
@@ -43,6 +51,9 @@ class PipelineOrchestrator:
         self.graph = self._build_graph()
         logger.info("Initialized LangGraph Pipeline: model=%s, verbose=%s", model_name, verbose)
 
+    # ---------------------------
+    # GRAPH SETUP
+    # ---------------------------
     def _build_graph(self):
         workflow = StateGraph(PipelineState)
         workflow.add_node("ingest", self._ingest_node)
@@ -61,9 +72,11 @@ class PipelineOrchestrator:
             {"create_pr": "create_pr", "end": END}
         )
         workflow.add_edge("create_pr", END)
-
         return workflow.compile()
 
+    # ---------------------------
+    # RUN METHOD
+    # ---------------------------
     def run(
         self,
         repo_url: str,
@@ -72,9 +85,17 @@ class PipelineOrchestrator:
         branch: str = "main",
         pr_create: bool = False
     ) -> Dict[str, Any]:
-        logger.info("Starting optimisation: repo=%s, path=%s, branch=%s", repo_url, pipeline_path, branch)
+
+        # Fetch or create repo in DB
+        repo_id = db.get_or_create_repo(repo_url=repo_url, default_branch=branch)
+        logger.info("Using repo_id=%d for repo=%s", repo_id, repo_url)
+
+        # Insert a new run record
+        run_id = db.create_run(repo_id=repo_id, commit_sha=None, trigger_source="API")
+        logger.info("Created run_id=%d for optimisation run", run_id)
 
         state: PipelineState = {
+            "repo_id": repo_id,
             "repo_url": repo_url,
             "pipeline_path": pipeline_path,
             "build_log_path": build_log_path,
@@ -86,12 +107,20 @@ class PipelineOrchestrator:
             "analysis_result": {},
             "optimised_yaml": "",
             "pr_url": None,
+            "run_id": run_id,
             "error": None
         }
 
         try:
             final_state = self.graph.invoke(state)
             self._log_summary(final_state)
+
+            # Update run status
+            if final_state.get("error"):
+                db.update_run_status(run_id=run_id, status="failed")
+            else:
+                db.update_run_status(run_id=run_id, status="completed")
+
             return {
                 "analysis": final_state.get("analysis_result"),
                 "optimised_yaml": final_state.get("optimised_yaml"),
@@ -100,10 +129,11 @@ class PipelineOrchestrator:
             }
         except Exception as e:
             logger.exception("Graph execution failed")
+            db.update_run_status(run_id=run_id, status="failed")
             return {"analysis": None, "optimised_yaml": None, "pr_url": None, "error": str(e)}
 
     # ---------------------------
-    # GRAPH NODE METHODS
+    # GRAPH NODES (unchanged logic)
     # ---------------------------
     def _ingest_node(self, state: PipelineState) -> PipelineState:
         if state.get("error"):
@@ -120,6 +150,10 @@ class PipelineOrchestrator:
             state["build_log"] = build_log or ""
             if not pipeline_yaml:
                 state["error"] = "Ingestor returned empty pipeline_yaml"
+
+            # Save artifact
+            db.insert_artifact(run_id=state["run_id"], stage="ingestor",
+                               content=pipeline_yaml, metadata={"build_log": build_log})
         except Exception as e:
             state["error"] = f"Ingest failed: {e}"
             logger.exception(state["error"])
@@ -131,12 +165,11 @@ class PipelineOrchestrator:
         try:
             from app.agents.validator import ValidatorAgent
             result = ValidatorAgent().run(pipeline_yaml=state["pipeline_yaml"])
-            if isinstance(result, dict):
-                state["validation_result"] = result
-            elif isinstance(result, bool):
-                state["validation_result"] = {"valid": result}
-            else:
-                state["validation_result"] = {"valid": True, "result": result}
+            state["validation_result"] = result if isinstance(result, dict) else {"valid": True}
+
+            # Save artifact
+            db.insert_artifact(run_id=state["run_id"], stage="validator",
+                               content=str(state["validation_result"]), metadata={})
         except Exception as e:
             state["error"] = f"Validation failed: {e}"
             logger.exception(state["error"])
@@ -147,15 +180,49 @@ class PipelineOrchestrator:
             return state
         try:
             from app.agents.analyser import AnalyserAgent
-            result = AnalyserAgent().run(
+            analysis_result = AnalyserAgent().run(
                 pipeline_yaml=state["pipeline_yaml"],
                 build_log=state["build_log"]
             )
-            state["analysis_result"] = result if isinstance(result, dict) else {"raw_result": result, "issues_detected": [], "suggested_fixes": []}
+
+            # Ensure a dict structure
+            if not isinstance(analysis_result, dict):
+                analysis_result = {
+                    "issues_detected": [],
+                    "suggested_fixes": [],
+                    "expected_improvement": "",
+                    "is_fixable": False
+                }
+
+            state["analysis_result"] = analysis_result
+
+            # Insert issues into DB
+            issues_detected = analysis_result.get("issues_detected", [])
+            suggested_fixes = analysis_result.get("suggested_fixes", [])
+
+            for i, issue_text in enumerate(issues_detected):
+                fix_text = suggested_fixes[i] if i < len(suggested_fixes) else "TBD"
+                issue_dict = {
+                    "type": "generic",
+                    "description": issue_text,
+                    "severity": "medium",
+                    "suggested_fix": fix_text
+                }
+                db.insert_issue(run_id=state["run_id"], **issue_dict)
+
+            logger.info(
+                "Analysis complete: %d issues, %d suggested fixes, fixable=%s",
+                len(issues_detected),
+                len(suggested_fixes),
+                analysis_result.get("is_fixable", False)
+            )
+
         except Exception as e:
             state["error"] = f"Analysis failed: {e}"
             logger.exception(state["error"])
         return state
+
+
 
     def _fix_node(self, state: PipelineState) -> PipelineState:
         if state.get("error"):
@@ -169,6 +236,9 @@ class PipelineOrchestrator:
                 state["optimised_yaml"] = optimised
             else:
                 state["error"] = "Fixer returned invalid output"
+
+            db.insert_artifact(run_id=state["run_id"], stage="fixer",
+                               content=state["optimised_yaml"], metadata={})
         except Exception as e:
             state["error"] = f"Fixer failed: {e}"
             logger.exception(state["error"])
@@ -178,17 +248,20 @@ class PipelineOrchestrator:
         if state.get("error") or not state.get("pr_create") or not state.get("optimised_yaml"):
             return state
         try:
+            from app.agents.pr_handler import PRHandlerAgent
             token = os.getenv("GITHUB_TOKEN")
             if not token:
                 return state
-            from app.agents.pr_handler import PRHandlerAgent
             pr_url = PRHandlerAgent(token).run(
                 repo_url=state["repo_url"],
                 optimised_yaml=state["optimised_yaml"],
                 base_branch=state["branch"],
                 pr_create=True
             )
-            state["pr_url"] = pr_url if isinstance(pr_url, str) else pr_url.get("pr_url") if isinstance(pr_url, dict) else None
+            state["pr_url"] = pr_url if isinstance(pr_url, str) else None
+
+            # Save PR info
+            db.insert_pr(run_id=state["run_id"], branch_name=state["branch"], pr_url=state["pr_url"])
         except Exception as e:
             logger.warning("PR creation failed: %s", e)
         return state

@@ -1,6 +1,7 @@
 -- =====================================================
 -- init_pipeline_db.sql
 -- PostgreSQL setup for Pipeline Optimiser
+-- Includes table ownership and grants
 -- =====================================================
 
 -- 1. Create database and user
@@ -10,14 +11,23 @@ CREATE USER pipeline_user WITH ENCRYPTED PASSWORD 'pipeline_pass';
 -- Create database
 CREATE DATABASE pipeline_db OWNER pipeline_user;
 
--- Grant privileges
+-- Grant privileges on database
 GRANT ALL PRIVILEGES ON DATABASE pipeline_db TO pipeline_user;
 
 -- Connect to the database
 \c pipeline_db
 
 -- =====================================================
--- 2. Create Tables
+-- 2. Drop existing tables (if any)
+-- =====================================================
+DROP TABLE IF EXISTS prs CASCADE;
+DROP TABLE IF EXISTS issues CASCADE;
+DROP TABLE IF EXISTS artifacts CASCADE;
+DROP TABLE IF EXISTS runs CASCADE;
+DROP TABLE IF EXISTS repositories CASCADE;
+
+-- =====================================================
+-- 3. Create Tables
 -- =====================================================
 
 -- -----------------------
@@ -84,7 +94,22 @@ CREATE TABLE prs (
 );
 
 -- =====================================================
--- 3. Optional: Test connection
+-- 4. Set ownership and grant privileges
+-- =====================================================
+ALTER TABLE repositories OWNER TO pipeline_user;
+ALTER TABLE runs OWNER TO pipeline_user;
+ALTER TABLE artifacts OWNER TO pipeline_user;
+ALTER TABLE issues OWNER TO pipeline_user;
+ALTER TABLE prs OWNER TO pipeline_user;
+
+GRANT ALL PRIVILEGES ON TABLE repositories TO pipeline_user;
+GRANT ALL PRIVILEGES ON TABLE runs TO pipeline_user;
+GRANT ALL PRIVILEGES ON TABLE artifacts TO pipeline_user;
+GRANT ALL PRIVILEGES ON TABLE issues TO pipeline_user;
+GRANT ALL PRIVILEGES ON TABLE prs TO pipeline_user;
+
+-- =====================================================
+-- 5. Optional: Test insertion
 -- =====================================================
 -- INSERT INTO repositories (repo_url) VALUES ('https://github.com/example/repo1');
 

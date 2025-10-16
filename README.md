@@ -10,25 +10,19 @@ The Pipeline Optimiser automates CI/CD pipeline improvements by ingesting pipeli
 
 ## Flow Diagram
 
-HTTP Request
+HTTP Request → Orchestrator
      │
-     ▼
-Orchestrator
+     ├─> DB: repositories (get_or_create_repo)
+     ├─> DB: runs (insert_run)
      │
-     ├─> IngestorAgent      (Fetch pipeline YAML + build logs)
+     ├─> IngestorAgent → artifacts(stage='ingestor')
+     ├─> ValidatorAgent → artifacts(stage='validator')
+     ├─> AnalyserAgent → artifacts(stage='analyzer') + issues
+     ├─> FixerAgent → artifacts(stage='fixer')
+     ├─> PRHandlerAgent → artifacts(stage='pr_handler') + prs
      │
-     ├─> ValidatorAgent     (Check YAML syntax & required keys)
-     │
-     ├─> AnalyserAgent      (Analyse pipeline for optimisation)
-     │
-     ├─> FixerAgent         (Apply fixes & optimise YAML)
-     │
-     ├─> PRHandlerAgent     (Push optimised YAML & create PR)
-     │
-     └─> Database           (Store run metadata: issues, fixes, PR URL)
-     │
-     ▼
-HTTP Response (JSON)
+     └─> Orchestrator → runs (update_run_status)
+
 
 
 - Each agent performs its task and writes relevant outputs to the database.  
