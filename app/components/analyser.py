@@ -8,14 +8,13 @@ import re
 from typing import Optional, Dict, Any
 from openai import OpenAI
 
-from app.agents.components.base_agent import BaseAgent
+from app.components.base_service import BaseService
 from app.utils.logger import get_logger
-from app.db import db
 
-logger = get_logger(__name__, "AnalyserAgent")
+logger = get_logger(__name__, "Analyser")
 
 
-class AnalyserAgent(BaseAgent):
+class Analyser(BaseService):
     """
     Analyses CI/CD pipeline YAML to identify optimisation opportunities.
     """
@@ -30,7 +29,7 @@ class AnalyserAgent(BaseAgent):
         self.client = OpenAI(api_key=api_key)
         self.model = model
         self.temperature = temperature
-        logger.debug("Initialised AnalyserAgent: model=%s, temperature=%.2f" % (model, temperature), correlation_id="INIT")
+        logger.debug("Initialised Analyser: model=%s, temperature=%.2f" % (model, temperature), correlation_id="INIT")
 
     def run(
         self,
@@ -77,31 +76,70 @@ class AnalyserAgent(BaseAgent):
             }
 
         state["analysis_result"] = analysis_result
-        self._store_issues_in_db(state, analysis_result, correlation_id)
+        issues_detected = analysis_result.get("issues_detected", [])
+        suggested_fixes = analysis_result.get("suggested_fixes", [])
+        
+        if issues_detected:
+            issues = []
+            for i, issue_text in enumerate(issues_detected):
+                fix_text = suggested_fixes[i] if i < len(suggested_fixes) else "TBD"
+                issues.append({
+                    "type": "optimization",
+                    "description": issue_text,
+                    "severity": self._determine_severity(issue_text),
+                    "suggested_fix": fix_text
+                })
+            try:
+                self.repository.save_issues(
+                    run_id=state["run_id"],
+                    issues=issues,
+                    correlation_id=correlation_id
+                )
+                logger.info(
+                    "Stored %d issues in database" % len(issues),
+                    correlation_id=correlation_id
+                )
+            except Exception as e:
+                # Continue analysis even if DB save fails
+                logger.warning(
+                    "Failed to store issues in database: %s" % str(e),
+                    correlation_id=correlation_id
+                )
 
         return state
 
-    def _store_issues_in_db(self, state: Dict[str, Any], analysis: Dict[str, Any], correlation_id: Optional[str] = None):
-        """Store detected issues in database"""
-        issues = analysis.get("issues_detected", [])
-        fixes = analysis.get("suggested_fixes", [])
-
-        for i, issue_text in enumerate(issues):
-            fix_text = fixes[i] if i < len(fixes) else "TBD"
-            try:
-                db.insert_issue(
-                    run_id=state["run_id"],
-                    type="generic",
-                    description=issue_text,
-                    severity="medium",
-                    suggested_fix=fix_text
-                )
-            except Exception as e:
-                logger.debug("Failed to insert issue into DB: %s" % e, correlation_id=correlation_id)
+    def _determine_severity(self, issue: str) -> str:
+        """
+        Determine issue severity based on content.
+        
+        Args:
+            issue: Issue description
+            
+        Returns:
+            Severity level: "high", "medium", or "low"
+        """
+        issue_lower = issue.lower()
+        
+        # High severity keywords
+        if any(word in issue_lower for word in [
+            "security", "vulnerability", "critical", "blocking",
+            "fail", "error", "crash", "unsafe", "exposed"
+        ]):
+            return "high"
+        
+        # Medium severity keywords
+        if any(word in issue_lower for word in [
+            "performance", "slow", "inefficient", "optimize",
+            "improve", "redundant", "duplicate", "bottleneck"
+        ]):
+            return "medium"
+        
+        # Default to low
+        return "low"
 
     def _get_artifact_key(self) -> Optional[str]:
-        """Analysis results are stored but not as artifact"""
-        return None
+        """Analysis results should be saved as artifact"""
+        return "analysis_result"
 
     def _build_prompt(self, pipeline_yaml: str, build_log: Optional[str]) -> str:
         """Construct prompt for LLM analysis."""

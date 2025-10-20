@@ -6,13 +6,13 @@ import re
 import yaml
 from typing import Dict, Any, Optional, List
 
-from app.agents.components.base_agent import BaseAgent
+from app.components.base_service import BaseService
 from app.utils.logger import get_logger
 
-logger = get_logger(__name__, "SecurityScannerAgent")
+logger = get_logger(__name__, "SecurityScanner")
 
 
-class SecurityScannerAgent(BaseAgent):
+class SecurityScanner(BaseService):
     """
     Scans CI/CD pipelines for security vulnerabilities.
     All security check logic is contained within this agent.
@@ -28,7 +28,7 @@ class SecurityScannerAgent(BaseAgent):
             "insecure_defaults": self._check_insecure_defaults
         }
         
-        logger.debug("Initialised SecurityScannerAgent", correlation_id="INIT")
+        logger.debug("Initialised SecurityScanner", correlation_id="INIT")
 
     def run(self, pipeline_yaml: str, correlation_id: Optional[str] = None) -> Dict[str, Any]:
         """

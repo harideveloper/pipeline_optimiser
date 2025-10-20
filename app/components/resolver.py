@@ -8,13 +8,13 @@ from typing import Dict, Any, Optional
 from github import Github, Auth
 from github.GithubException import GithubException
 
-from app.agents.components.base_agent import BaseAgent
+from app.components.base_service import BaseService
 from app.utils.logger import get_logger
 
-logger = get_logger(__name__, "ResolverAgent")
+logger = get_logger(__name__, "Resolver")
 
 
-class ResolverAgent(BaseAgent):
+class Resolver(BaseService):
     """
     Handles resolution of pipeline issues by pushing optimised YAML 
     to GitHub and creating a pull request.
@@ -25,12 +25,12 @@ class ResolverAgent(BaseAgent):
         
         self.gh_token = gh_token or os.getenv("GITHUB_TOKEN")
         if not self.gh_token:
-            logger.error("GITHUB_TOKEN is required for ResolverAgent", correlation_id="INIT")
-            raise ValueError("GITHUB_TOKEN is required for ResolverAgent")
+            logger.error("GITHUB_TOKEN is required for Resolver", correlation_id="INIT")
+            raise ValueError("GITHUB_TOKEN is required for Resolver")
 
         auth = Auth.Token(self.gh_token)
         self.gh = Github(auth=auth)
-        logger.debug("Initialised ResolverAgent with provided GitHub token", correlation_id="INIT")
+        logger.debug("Initialised Resolver with provided GitHub token", correlation_id="INIT")
 
     def run(
         self,
@@ -212,7 +212,7 @@ class ResolverAgent(BaseAgent):
     def _execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Execute resolver within workflow"""
         correlation_id = state.get("correlation_id")
-            
+
         if not state.get("pr_create"):
             logger.info("PR creation not requested by the user, hence skipping", correlation_id=correlation_id)
             return state
@@ -241,20 +241,24 @@ class ResolverAgent(BaseAgent):
 
             if pr_url:
                 state["pr_url"] = pr_url
-            logger.info("PR created: %s" % pr_url, correlation_id=correlation_id)
-
-            from app.db import db
-            db.insert_pr(
-                run_id=state["run_id"],
-                branch_name=f"optimise-pipeline-{correlation_id}" if correlation_id else "optimise-pipeline",
-                pr_url=state["pr_url"]
-            )
+                logger.info("PR created: %s" % pr_url, correlation_id=correlation_id)
+                branch_name = f"optimise-pipeline-{correlation_id}" if correlation_id else "optimise-pipeline"
+                try:
+                    self.repository.save_pr(
+                        run_id=state["run_id"],
+                        branch_name=branch_name,
+                        pr_url=state["pr_url"],
+                        correlation_id=correlation_id
+                    )
+                except Exception as e:
+                    logger.warning("Failed to persist PR info: %s" % str(e), correlation_id=correlation_id)
 
         except Exception as e:
             logger.exception("PR creation failed: %s" % e, correlation_id=correlation_id)
             state["error"] = f"PR creation failed: {str(e)}"
 
         return state
+
 
     def _get_artifact_key(self) -> Optional[str]:
         """No artifact to save for resolver"""

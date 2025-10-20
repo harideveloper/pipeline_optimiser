@@ -7,13 +7,13 @@ import tempfile
 import subprocess
 from typing import Optional, Tuple, Dict, Any
 
-from app.agents.components.base_agent import BaseAgent
+from app.components.base_service import BaseService
 from app.utils.logger import get_logger
 
-logger = get_logger(__name__, "IngestorAgent")
+logger = get_logger(__name__, "Ingestor")
 
 
-class IngestorAgent(BaseAgent):
+class Ingestor(BaseService):
     """
     Ingests a GitHub repository to retrieve the pipeline YAML and optional build log.
     """

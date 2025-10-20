@@ -9,13 +9,13 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from langchain.schema.output_parser import StrOutputParser
 
-from app.agents.components.base_agent import BaseAgent
+from app.components.base_service import BaseService
 from app.utils.logger import get_logger
 
-logger = get_logger(__name__, "FixerAgent")
+logger = get_logger(__name__, "Fixer")
 
 
-class FixerAgent(BaseAgent):
+class Fixer(BaseService):
     """
     Applies suggested fixes to a CI/CD pipeline YAML file.
     Ensures output is valid YAML and adheres strictly to the requested changes.
@@ -40,7 +40,7 @@ class FixerAgent(BaseAgent):
         )
 
         self.chain = self.prompt_template | self.llm | StrOutputParser()
-        logger.debug("Initialised FixerAgent: model=%s" % model_name, correlation_id="INIT")
+        logger.debug("Initialised Fixer: model=%s" % model_name, correlation_id="INIT")
 
     def run(self, pipeline_yaml: str, suggested_fixes: list, correlation_id: Optional[str] = None) -> str:
         """Apply suggested fixes to pipeline YAML."""

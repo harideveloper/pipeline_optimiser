@@ -5,14 +5,14 @@ Reviewer Agent - Validates optimized/fixed CI/CD pipeline YAML.
 import yaml
 from typing import Dict, Any, Optional
 
-from app.agents.components.base_agent import BaseAgent
-from app.agents.components.validator import ValidatorAgent
+from app.components.base_service import BaseService
+from app.components.validator import Validator
 from app.utils.logger import get_logger
 
-logger = get_logger(__name__, "ReviewerAgent")
+logger = get_logger(__name__, "Reviewer")
 
 
-class ReviewerAgent(BaseAgent):
+class Reviewer(BaseService):
     """
     Reviews that applied fixes to CI/CD YAML are correct
     and follow CI/CD best practices.
@@ -20,7 +20,7 @@ class ReviewerAgent(BaseAgent):
 
     def __init__(self):
         super().__init__(agent_name="review_fix")
-        self.validator = ValidatorAgent()
+        self.validator = Validator()
 
     def run(self, pipeline_yaml: str, correlation_id: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -139,3 +139,7 @@ class ReviewerAgent(BaseAgent):
             "reason": "All best practices followed" if not issues else "Issues found",
             "issues": issues
         }
+    
+    def _get_artifact_key(self) -> Optional[str]:
+        """Review artifacts should be saved as artifact"""
+        return "reviewer"

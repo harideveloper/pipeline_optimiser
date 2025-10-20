@@ -8,13 +8,13 @@ from typing import Dict, Any, Optional
 
 from openai import OpenAI
 
-from app.agents.components.base_agent import BaseAgent
+from app.components.base_service import BaseService
 from app.utils.logger import get_logger
 
-logger = get_logger(__name__, "RiskAssessorAgent")
+logger = get_logger(__name__, "RiskAssessor")
 
 
-class RiskAssessorAgent(BaseAgent):
+class RiskAssessor(BaseService):
     """
     Assesses the risk of proposed pipeline changes
     """
@@ -29,7 +29,7 @@ class RiskAssessorAgent(BaseAgent):
         self.client = OpenAI(api_key=api_key)
         self.model = model
         self.temperature = temperature
-        logger.debug("Initialised RiskAssessorAgent: model=%s" % model, correlation_id="INIT")
+        logger.debug("Initialised RiskAssessor: model=%s" % model, correlation_id="INIT")
 
     def run(
         self,

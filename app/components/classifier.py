@@ -7,10 +7,10 @@ import yaml
 from typing import Dict, Any, Optional
 from dataclasses import dataclass
 
-from app.agents.components.base_agent import BaseAgent
+from app.components.base_service import BaseService
 from app.utils.logger import get_logger
 
-logger = get_logger(__name__, "ClassifierAgent")
+logger = get_logger(__name__, "Classifier")
 
 
 @dataclass
@@ -23,7 +23,7 @@ class ClassifierProfile:
     characteristics: Dict[str, Any]
 
 
-class ClassifierAgent(BaseAgent):
+class Classifier(BaseService):
     """
     Classifies GitHub Actions workflows in a BaseAgent style.
     Deterministic; no LLM calls.
@@ -31,7 +31,7 @@ class ClassifierAgent(BaseAgent):
 
     def __init__(self):
         super().__init__(agent_name="classify")
-        logger.debug("Initialized ClassifierAgent", correlation_id="INIT")
+        logger.debug("Initialized Classifier", correlation_id="INIT")
 
     # =============================================
     # BaseAgent implementations
@@ -389,3 +389,7 @@ class ClassifierAgent(BaseAgent):
             },
             characteristics={}
         )
+    
+    def _get_artifact_key(self) -> Optional[str]:
+        """classification artifacts should be saved as artifact"""
+        return "classifier"

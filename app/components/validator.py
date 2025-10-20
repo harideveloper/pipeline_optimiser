@@ -5,13 +5,13 @@ Validator Agent - Validates CI/CD pipeline YAML structure and syntax.
 import yaml
 from typing import Dict, Any, Optional, List
 
-from app.agents.components.base_agent import BaseAgent
+from app.components.base_service import BaseService
 from app.utils.logger import get_logger
 
-logger = get_logger(__name__, "ValidatorAgent")
+logger = get_logger(__name__, "Validator")
 
 
-class ValidatorAgent(BaseAgent):
+class Validator(BaseService):
     """
     Validates CI/CD pipeline YAML for structure, syntax, and required keys.
     """
@@ -19,7 +19,7 @@ class ValidatorAgent(BaseAgent):
 
     def __init__(self):
         super().__init__(agent_name="validate")
-        logger.debug("Initialised ValidatorAgent", correlation_id="INIT")
+        logger.debug("Initialised Validator", correlation_id="INIT")
 
     def run(self, pipeline_yaml: str, correlation_id: Optional[str] = None) -> Dict[str, Any]:
         """

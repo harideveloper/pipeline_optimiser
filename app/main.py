@@ -10,10 +10,10 @@ from pydantic import BaseModel
 from typing import Optional
 from contextlib import asynccontextmanager
 from app.utils.logger import setup_logging, get_logger
-from app.agents.orchestrator import PipelineOrchestrator
+from app.orchestrator.orchestrator import PipelineOrchestrator
 
 setup_logging()
-logger = get_logger(__name__, "MainAPI")
+logger = get_logger(__name__, "OptimiserAPI")
 
 
 def configure_ssl_certificates() -> str:

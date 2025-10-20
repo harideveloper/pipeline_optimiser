@@ -12,17 +12,17 @@ from langgraph.graph import StateGraph, END
 from openai import OpenAI
 
 from app.db import db
-from app.agents.components.helper import generate_correlation_id
+from app.utils.correlation import generate_correlation_id
 from app.utils.logger import get_logger
-from app.agents.components.classifier import ClassifierAgent
-from app.agents.components.ingestor import IngestorAgent
-from app.agents.components.validator import ValidatorAgent
-from app.agents.components.analyser import AnalyserAgent
-from app.agents.components.fixer import FixerAgent
-from app.agents.components.resolver import ResolverAgent
-from app.agents.components.risk_assessor import RiskAssessorAgent
-from app.agents.components.security_scanner import SecurityScannerAgent
-from app.agents.components.reviewer import ReviewerAgent
+from app.agents.components.classifier import Classifier
+from app.agents.components.ingestor import Ingestor
+from app.agents.components.validator import Validator
+from app.agents.components.analyser import Analyser
+from app.agents.components.fixer import Fixer
+from app.agents.components.resolver import Resolver
+from app.agents.components.risk_assessor import RiskAssessor
+from app.agents.components.security_scanner import SecurityScanner
+from app.agents.components.reviewer import Reviewer
 
 logger = get_logger(__name__, "PipelineOrchestrator")
 
@@ -83,18 +83,18 @@ class PipelineOrchestrator:
             raise ValueError("OPENAI_API_KEY environment variable not set")
         self.client = OpenAI(api_key=api_key)
         
-        self.classifier = ClassifierAgent()
+        self.classifier = Classifier()
         
         # Tool registry
         self.tools = {
-            "ingest": IngestorAgent(),
-            "validate": ValidatorAgent(),
-            "analyse": AnalyserAgent(),
-            "risk_assessment": RiskAssessorAgent(),
-            "security_scan": SecurityScannerAgent(),
-            "fix": FixerAgent(),
-            "review": ReviewerAgent(),
-            "resolve": ResolverAgent(),
+            "ingest": Ingestor(),
+            "validate": Validator(),
+            "analyse": Analyser(),
+            "risk_assessment": RiskAssessor(),
+            "security_scan": SecurityScanner(),
+            "fix": Fixer(),
+            "review": Reviewer(),
+            "resolve": Resolver(),
         }
         
         # Build LangGraph
@@ -108,11 +108,11 @@ class PipelineOrchestrator:
         """
         workflow = StateGraph(PipelineState)
         
-        workflow.add_node("classify", self._classify_workflow)
-        workflow.add_node("decide", self._agent_decision)
-        workflow.add_node("execute", self._execute_tool)
-        workflow.set_entry_point("classify")
-        workflow.add_edge("classify", "decide")
+        workflow.add_node("plan", self._plan_workflow)
+        workflow.add_node("decide", self._decision_workflow)
+        workflow.add_node("execute", self._execute_workflow)
+        workflow.set_entry_point("plan")
+        workflow.add_edge("plan", "decide")
         workflow.add_conditional_edges(
             "decide",
             self._should_continue,
@@ -195,7 +195,7 @@ class PipelineOrchestrator:
 
  
     # GRAPH NODES
-    def _classify_workflow(self, state: PipelineState) -> PipelineState:
+    def _plan_workflow(self, state: PipelineState) -> PipelineState:
         """
         Node 1: Classify workflow and generate plan
         """
@@ -212,7 +212,7 @@ class PipelineOrchestrator:
         )
         return state
 
-    def _agent_decision(self, state: PipelineState) -> PipelineState:
+    def _decision_workflow(self, state: PipelineState) -> PipelineState:
         """
         Node 2: Agent decides whether to run/skip next tool in plan
         """
@@ -261,7 +261,7 @@ class PipelineOrchestrator:
         
         return state
 
-    def _execute_tool(self, state: PipelineState) -> PipelineState:
+    def _execute_workflow(self, state: PipelineState) -> PipelineState:
         """
         Node 3: Execute or skip the current tool based on agent decision
         """
