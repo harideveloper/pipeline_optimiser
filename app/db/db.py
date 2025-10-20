@@ -57,7 +57,7 @@ def get_or_create_repo(repo_url: str, default_branch: str = "main") -> int:
                     (repo_url, default_branch)
                 )
                 repo_id = cur.fetchone()["id"]
-                logger.info("Created new repository record: %s (id=%d)", repo_url, repo_id)
+                logger.debug("Created new repository record: %s (id=%d)", repo_url, repo_id)
                 return repo_id
     finally:
         conn.close()
@@ -80,7 +80,7 @@ def create_run(repo_id: int, commit_sha: Optional[str] = None, trigger_source: s
                     (repo_id, commit_sha, trigger_source)
                 )
                 run_id = cur.fetchone()["id"]
-                logger.info("Created new run: %d for repo_id %d", run_id, repo_id)
+                logger.debug("Created new run: %d for repo_id %d", run_id, repo_id)
                 return run_id
     finally:
         conn.close()
@@ -99,7 +99,7 @@ def update_run_status(run_id: int, status: str, end_time: Optional[str] = None):
                     """,
                     (status, end_time, run_id)
                 )
-                logger.info("Updated run %d status to %s", run_id, status)
+                logger.debug("Updated run %d status to %s", run_id, status)
     finally:
         conn.close()
 
@@ -159,6 +159,6 @@ def insert_pr(run_id: int, branch_name: str, pr_url: str, status: str = "created
                     """,
                     (run_id, branch_name, pr_url, status, merged)
                 )
-                logger.info("Inserted PR record for run_id %d, branch %s", run_id, branch_name)
+                logger.debug("Inserted PR record for run_id %d, branch %s", run_id, branch_name)
     finally:
         conn.close()

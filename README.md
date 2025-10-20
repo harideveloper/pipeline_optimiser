@@ -103,3 +103,104 @@ merged BOOLEAN DEFAULT FALSE
 created_at TIMESTAMP DEFAULT NOW()
 
 ```
+
+
+API Request → Initialize State
+     ↓
+┌─────────────────────────────────────────────┐
+│ CLASSIFY NODE (New!)                        │
+│                                             │
+│ 1. Detect workflow type:                   │
+│    - CI workflow (triggers: push, PR)       │
+│    - CD workflow (triggers: push to main)   │
+│    - Release workflow (triggers: tag)       │
+│    - Scheduled workflow                     │
+│                                             │
+│ 2. Detect change scope:                    │
+│    - Docs-only                              │
+│    - Code changes                           │
+│    - Infrastructure changes                 │
+│    - Deployment changes                     │
+│                                             │
+│ 3. Calculate risk level:                   │
+│    - LOW: docs, comments, readme            │
+│    - MEDIUM: code, tests                    │
+│    - HIGH: deployment, secrets, infra       │
+│                                             │
+│ 4. Create execution strategy:              │
+│    - Mandatory tools: [ingest, validate]    │
+│    - Optional tools: [risk, security]       │
+│    - Recommended tools: [analyze, fix]      │
+│                                             │
+│ Output: workflow_profile                    │
+└─────────────────────────────────────────────┘
+     ↓
+┌─────────────────────────────────────────────┐
+│ THINK NODE (Enhanced Reasoning)             │
+│                                             │
+│ LLM receives:                               │
+│ - Current state                             │
+│ - Workflow profile (type, risk, strategy)   │
+│ - Action history                            │
+│ - Available tools                           │
+│ - Mandatory vs optional distinction         │
+│                                             │
+│ LLM decides:                                │
+│ - Next action (from available tools)        │
+│ - Why? (reasoning)                          │
+│ - Confidence (0-1)                          │
+│ - What to skip and why                      │
+│                                             │
+│ Output: decision                            │
+└─────────────────────────────────────────────┘
+     ↓
+┌─────────────────────────────────────────────┐
+│ SAFETY GATE (Validation Layer)              │
+│                                             │
+│ Check if decision is safe:                  │
+│                                             │
+│ Block if:                                   │
+│ - Skipping security_scan on HIGH risk       │
+│ - Skipping validate before fix              │
+│ - Creating PR without any validation        │
+│                                             │
+│ Allow if:                                   │
+│ - Skipping security on LOW risk             │
+│ - Skipping risk_assessment on docs-only     │
+│ - Completing early if no fixes needed       │
+│                                             │
+│ Override decision if unsafe                 │
+│ Output: validated_decision                  │
+└─────────────────────────────────────────────┘
+     ↓
+┌─────────────────────────────────────────────┐
+│ ACT NODE (Execute Tool)                     │
+│                                             │
+│ Execute the chosen tool                     │
+│ Track execution time, result, output        │
+│                                             │
+│ Output: action_result                       │
+└─────────────────────────────────────────────┘
+     ↓
+┌─────────────────────────────────────────────┐
+│ OBSERVE NODE (Process Results)              │
+│                                             │
+│ Create observation from result:             │
+│ - Success/failure                           │
+│ - Key findings                              │
+│ - Impact on next steps                      │
+│                                             │
+│ Update state:                               │
+│ - Add to action_history                     │
+│ - Update artifacts                          │
+│ - Add observation to context                │
+│                                             │
+│ Check completion:                           │
+│ - All mandatory tools done?                 │
+│ - Ready to complete?                        │
+│                                             │
+│ Output: updated_state                       │
+└─────────────────────────────────────────────┘
+     ↓
+  If not complete → Back to THINK
+  If complete → END

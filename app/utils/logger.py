@@ -10,6 +10,39 @@ from typing import Optional
 from pathlib import Path
 
 
+class CorrelationIdFormatter(logging.Formatter):
+    """
+    Custom formatter that includes correlation_id in structured format.
+    
+    Format: timestamp | level | class | correlation_id | message
+    """
+    
+    def format(self, record: logging.LogRecord) -> str:
+        # Extract correlation_id and class_name from extra
+        correlation_id = getattr(record, 'correlation_id', 'N/A')
+        class_name = getattr(record, 'class_name', 'N/A')
+        
+        # Format timestamp
+        timestamp = self.formatTime(record, self.datefmt)
+        
+        # Build structured log line (simplified format)
+        parts = [
+            timestamp,
+            record.levelname,
+            class_name,
+            str(correlation_id),
+            record.getMessage()
+        ]
+        
+        log_line = " | ".join(parts)
+        
+        # Add exception info if present
+        if record.exc_info:
+            log_line += "\n" + self.formatException(record.exc_info)
+        
+        return log_line
+
+
 def setup_logging(
     level: Optional[str] = None,
     log_file: Optional[str] = None,
@@ -17,7 +50,9 @@ def setup_logging(
     include_timestamp: bool = True
 ) -> None:
     """
-    Configure application-wide logging.
+    Configure application-wide logging with standardized format.
+    
+    Format: timestamp | level | class | correlation_id | message
     
     Args:
         level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
@@ -27,44 +62,28 @@ def setup_logging(
         log_to_console: Whether to output logs to console (default: True)
         include_timestamp: Whether to include timestamps in logs (default: True)
     """
-    # Determine log level
     if level is None:
         level = os.getenv("LOG_LEVEL", "INFO").upper()
     else:
         level = level.upper()
     
-    # Determine log file
     if log_file is None:
         log_file = os.getenv("LOG_FILE")
     
-    # Create log format
-    if include_timestamp:
-        log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        date_format = "%Y-%m-%d %H:%M:%S"
-    else:
-        log_format = "%(name)s - %(levelname)s - %(message)s"
-        date_format = None
+    date_format = "%Y-%m-%d %H:%M:%S" if include_timestamp else None
+    formatter = CorrelationIdFormatter(datefmt=date_format)
     
-    # Create formatter
-    formatter = logging.Formatter(fmt=log_format, datefmt=date_format)
-    
-    # Get root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, level))
-    
-    # Remove existing handlers to avoid duplicates
     root_logger.handlers.clear()
-    
-    # Add console handler
+
     if log_to_console:
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setFormatter(formatter)
         console_handler.setLevel(getattr(logging, level))
         root_logger.addHandler(console_handler)
     
-    # Add file handler if specified
     if log_file:
-        # Create directory if it doesn't exist
         log_path = Path(log_file)
         log_path.parent.mkdir(parents=True, exist_ok=True)
         
@@ -73,13 +92,14 @@ def setup_logging(
         file_handler.setLevel(getattr(logging, level))
         root_logger.addHandler(file_handler)
     
-    # Reduce noise from third-party libraries
     _configure_third_party_loggers()
     
-    # Log initialization
     logger = logging.getLogger(__name__)
-    logger.info("Logging configured: level=%s, console=%s, file=%s", 
-                level, log_to_console, log_file or "None")
+    logger.info(
+        "Logging configured: level=%s, console=%s, file=%s", 
+        level, log_to_console, log_file or "None",
+        extra={'correlation_id': 'SYSTEM', 'class_name': 'LoggingConfig'}
+    )
 
 
 def _configure_third_party_loggers():
@@ -99,17 +119,59 @@ def _configure_third_party_loggers():
         logging.getLogger(logger_name).setLevel(log_level)
 
 
-def get_logger(name: str) -> logging.Logger:
+class ContextLogger:
     """
-    Get a logger instance for the given name.
+    Logger wrapper that automatically includes correlation_id and class context.
+    
+    Usage:
+        logger = ContextLogger(__name__, self.__class__.__name__)
+        logger.info("Message", correlation_id="12345678")
+    """
+    
+    def __init__(self, name: str, class_name: str = "N/A"):
+        self.logger = logging.getLogger(name)
+        self.class_name = class_name
+    
+    def _log(self, level: int, msg: str, correlation_id: Optional[str] = None, *args, **kwargs):
+        """Internal logging method with context."""
+        extra = kwargs.pop('extra', {})
+        extra['correlation_id'] = correlation_id or 'N/A'
+        extra['class_name'] = self.class_name
+        
+        self.logger.log(level, msg, *args, extra=extra, **kwargs)
+    
+    def debug(self, msg: str, correlation_id: Optional[str] = None, *args, **kwargs):
+        self._log(logging.DEBUG, msg, correlation_id, *args, **kwargs)
+    
+    def info(self, msg: str, correlation_id: Optional[str] = None, *args, **kwargs):
+        self._log(logging.INFO, msg, correlation_id, *args, **kwargs)
+    
+    def warning(self, msg: str, correlation_id: Optional[str] = None, *args, **kwargs):
+        self._log(logging.WARNING, msg, correlation_id, *args, **kwargs)
+    
+    def error(self, msg: str, correlation_id: Optional[str] = None, *args, **kwargs):
+        self._log(logging.ERROR, msg, correlation_id, *args, **kwargs)
+    
+    def exception(self, msg: str, correlation_id: Optional[str] = None, *args, **kwargs):
+        kwargs['exc_info'] = True
+        self._log(logging.ERROR, msg, correlation_id, *args, **kwargs)
+    
+    def critical(self, msg: str, correlation_id: Optional[str] = None, *args, **kwargs):
+        self._log(logging.CRITICAL, msg, correlation_id, *args, **kwargs)
+
+
+def get_logger(name: str, class_name: str = "N/A") -> ContextLogger:
+    """
+    Get a context-aware logger instance.
     
     Args:
         name: Logger name (typically __name__ of the module)
+        class_name: Name of the class using the logger
         
     Returns:
-        Configured logger instance
+        ContextLogger instance with correlation_id support
     """
-    return logging.getLogger(name)
+    return ContextLogger(name, class_name)
 
 
 def set_log_level(level: str) -> None:
@@ -122,20 +184,19 @@ def set_log_level(level: str) -> None:
     level = level.upper()
     logging.getLogger().setLevel(getattr(logging, level))
     
-    logger = logging.getLogger(__name__)
-    logger.info("Log level changed to: %s", level)
+    logger = get_logger(__name__, "LoggingConfig")
+    logger.info("Log level changed to: %s" % level, correlation_id="SYSTEM")
 
 
 def enable_debug_mode():
     """Enable debug mode with verbose logging."""
     set_log_level("DEBUG")
     
-    # Also enable debug for some third-party libraries
     logging.getLogger("httpx").setLevel(logging.DEBUG)
     logging.getLogger("git").setLevel(logging.DEBUG)
     
-    logger = logging.getLogger(__name__)
-    logger.debug("Debug mode enabled")
+    logger = get_logger(__name__, "LoggingConfig")
+    logger.debug("Debug mode enabled", correlation_id="SYSTEM")
 
 
 def disable_debug_mode():
@@ -143,5 +204,5 @@ def disable_debug_mode():
     set_log_level("INFO")
     _configure_third_party_loggers()
     
-    logger = logging.getLogger(__name__)
-    logger.info("Debug mode disabled")
+    logger = get_logger(__name__, "LoggingConfig")
+    logger.info("Debug mode disabled", correlation_id="SYSTEM")
