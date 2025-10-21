@@ -12,6 +12,7 @@ from openai import OpenAI
 from app.repository.pipeline_repository import PipelineRepository
 from app.utils.correlation import generate_correlation_id
 from app.utils.logger import get_logger
+from app.config import config
 
 from app.orchestrator.state import PipelineState
 from app.orchestrator.nodes import (
@@ -21,7 +22,6 @@ from app.orchestrator.nodes import (
     should_continue,
 )
 
-# Import components
 from app.components.decision import Decision
 from app.components.classifier import Classifier
 from app.components.ingestor import Ingestor
@@ -37,35 +37,19 @@ logger = get_logger(__name__, "PipelineOrchestrator")
 
 
 class PipelineOrchestrator:
-    """
-    Simplified CI/CD Pipeline Optimization Orchestrator.
-    
-    """
+    """ CI/CD Pipeline Optimisation Orchestrator."""
 
-    def __init__(self, model_name: str = "gpt-4o-mini", temperature: float = 0.1):
+    def __init__(self, model_name: str, temperature: float):
         """Initialize orchestrator with all components."""
         self.model_name = model_name
         self.temperature = temperature
-        
-        # Initialize OpenAI client
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable not set")
-        self.client = OpenAI(api_key=api_key)
-        
-        # Initialize db delegate
+        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
         self.repository = PipelineRepository()
-        
-        # Initialize classifier
         self.classifier = Classifier()
-        
-        # Initialize decision agent
         self.decision_agent = Decision(
             model=model_name,
             temperature=temperature
         )
-        
-        # Initialize tool registry
         self.tools = {
             "ingest": Ingestor(),
             "validate": Validator(),
@@ -89,7 +73,7 @@ class PipelineOrchestrator:
         """Build LangGraph workflow with 3 nodes."""
         workflow = StateGraph(PipelineState)
         
-        # Register nodes
+        # Register langgraph nodes
         workflow.add_node(
             "plan",
             lambda state: plan_node(state, self.tools["ingest"], self.classifier)
@@ -126,26 +110,20 @@ class PipelineOrchestrator:
         branch: str = "main",
         pr_create: bool = False
     ) -> Dict[str, Any]:
-        """
-        Run the pipeline optimization workflow.
-        
-        NOW: Uses repository instead of direct db calls
-        """
+        """ Run the pipeline optimization workflow."""
         correlation_id = generate_correlation_id()
-        
         run_id = self.repository.start_run(
             repo_url=repo_url,
             branch=branch,
             trigger_source="API",
             correlation_id=correlation_id
         )
-        
         logger.info(
             f"Starting pipeline optimization (run_id={run_id}, repo={repo_url})",
             correlation_id=correlation_id
         )
         
-        # Initialize state
+        # Initialize state (langgraph memory)
         initial_state: PipelineState = {
             "repo_url": repo_url,
             "pipeline_path": pipeline_path,
@@ -175,10 +153,9 @@ class PipelineOrchestrator:
             start_time = datetime.now()
             final_state = self.graph.invoke(initial_state)
             duration = (datetime.now() - start_time).total_seconds()
-            
+
             # Log summary
             self._log_summary(final_state, duration)
-            
             self.repository.complete_run(
                 run_id=run_id,
                 correlation_id=correlation_id
@@ -202,7 +179,6 @@ class PipelineOrchestrator:
                 error=str(e),
                 correlation_id=correlation_id
             )
-            
             return {
                 "success": False,
                 "correlation_id": correlation_id,
@@ -212,19 +188,16 @@ class PipelineOrchestrator:
     def _log_summary(self, state: PipelineState, duration: float) -> None:
         """Log execution summary."""
         cid = state["correlation_id"]
-        
         logger.info(
             f"Workflow Type: {state['workflow_type']} | "
             f"Risk Level: {state['risk_level']} | "
             f"Duration: {duration:.2f}s",
             correlation_id=cid
         )
-        
         logger.info(
             f"Planned Steps ({len(state['plan'])}): {' | '.join(state['plan'])}",
             correlation_id=cid
         )
-        
         logger.info(
             f"Executed Steps ({len(state['completed_tools'])}): "
             f"{' | '.join(state['completed_tools'])}",

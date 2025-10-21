@@ -1,6 +1,5 @@
 """
-Workflow Node Implementations - FIXED VERSION
-Standardized tool interface - all tools called via execute_node()
+Workflow Node Implementations
 """
 
 from typing import Dict, Any, Literal
@@ -8,7 +7,6 @@ from app.orchestrator.state import PipelineState
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__, "PipelineNodes")
-
 
 def plan_node(
     state: PipelineState,
@@ -36,8 +34,8 @@ def plan_node(
         - risk_level: HIGH/MEDIUM/LOW
         - plan: List of tool names to execute
     """
+
     cid = state["correlation_id"]
-    
     logger.debug("Plan Node: Starting ingestion and classification", correlation_id=cid)
     
     # Step 1: Ingest repository
@@ -68,7 +66,7 @@ def decision_node(
     """
     Node 2: Make Decision
     
-    Uses DecisionAgent (LLM-powered) to decide whether to run or skip
+    Uses Decision Component (LLM) to decide whether to run or skip
     the next tool in the plan.
     
     Args:
@@ -110,11 +108,11 @@ def decision_node(
         correlation_id=cid
     )
     
-    # Ask decision agent: run or skip?
+    # Ask decision component : run or skip?
     state["_current_tool"] = next_tool
     state = decision_agent._execute(state)
     
-    logger.info(
+    logger.debug(
         f"Decision: {state['next_action']} {next_tool} | Reasoning: {state['agent_reasoning']}",
         correlation_id=cid
     )
@@ -168,31 +166,24 @@ def execute_node(
         state.update(result)
         if tool_name not in state["completed_tools"]:
             state["completed_tools"].append(tool_name)
-        
-        # Build log entry with context
         log_entry = f"{tool_name}: completed"
-        
         if tool_name == "analyse":
             issues = state.get("analysis_result", {}).get("issues_detected", [])
             log_entry += f" ({len(issues)} issues found)"
         elif tool_name == "resolve" and state.get("pr_url"):
             log_entry += f" (PR: {state['pr_url']})"
-        
         state["execution_log"].append(log_entry)
-        
-        logger.info(f"Completed: {tool_name}", correlation_id=cid)
+        logger.debug(f"Completed: {tool_name}", correlation_id=cid)
         
     except Exception as e:
         logger.error(
             f"Tool execution failed: {tool_name} - {e}",
             correlation_id=cid
         )
+        # Note: Allow the workflow to continue if possible and capture error if required at component level
         state["execution_log"].append(f"{tool_name}: FAILED - {e}")
-        # Note: We don't set state["error"] here to allow workflow to continue if possible. 
-        # Individual tools can set state["error"] in their _execute() method if they want to stop the workflow.
     
     state["plan_index"] += 1
-    
     return state
 
 

@@ -1,13 +1,12 @@
 """
-Pipeline Orchestration State
-Defines the state structure for the workflow
+Pipeline Orchestration State : Defines the state structure for the workflow
 """
 
 from typing import TypedDict, Optional, Any, Dict, List
 
 
 class PipelineState(TypedDict):
-    """State for hybrid plan-based workflow"""
+    """Pipeline optimiser workflow state"""
     
     # Core inputs
     repo_url: str

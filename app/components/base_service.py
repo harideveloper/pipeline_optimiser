@@ -88,6 +88,12 @@ class BaseService(ABC):
         - Track completion
         - Save artifacts
         - Handle errors
+        
+        Args:
+            state: Current workflow state
+            
+        Returns:
+            Updated workflow state
         """
         correlation_id = state.get("correlation_id")
         
@@ -95,7 +101,7 @@ class BaseService(ABC):
         completed_tools = state.get("completed_tools", [])
         if self.agent_name in completed_tools:
             logger.debug(
-                f"{self.agent_name.replace('_', ' ').title()} already completed, skipping",
+                f"{self._format_agent_name()} already completed, skipping",
                 correlation_id=correlation_id
             )
             return state
@@ -109,12 +115,12 @@ class BaseService(ABC):
             return state
 
         logger.debug(
-            f"Executing: {self.agent_name.replace('_', ' ').title()}",
+            f"Executing: {self._format_agent_name()}",
             correlation_id=correlation_id
         )
 
         try:
-            # invoke subclass implementation
+            # Invoke subclass implementation
             state = self._execute(state)
 
             if not state.get("error"):
@@ -124,14 +130,16 @@ class BaseService(ABC):
                     state["completed_tools"] = completed_tools
                 
                 logger.debug(
-                    f"{self.agent_name.replace('_', ' ').title()} completed successfully",
+                    f"{self._format_agent_name()} completed successfully",
                     correlation_id=correlation_id
                 )
                 self._save_artifact(state, correlation_id)
 
         except Exception as e:
-            error_msg = f"{self.agent_name.replace('_', ' ').title()} failed: {e}"
+            error_msg = f"{self._format_agent_name()} failed: {e}"
             state["error"] = error_msg
+            
+            # Use appropriate logging level based on exception type
             if isinstance(e, (RuntimeError, FileNotFoundError, ValueError)):
                 logger.error(error_msg, correlation_id=correlation_id)
             else:
@@ -144,6 +152,10 @@ class BaseService(ABC):
         Save service output as artifact.
         
         Don't override this method. Override _get_artifact_key() instead.
+        
+        Args:
+            state: Current workflow state
+            correlation_id: Request correlation ID
         """
         artifact_key = self._get_artifact_key()
         if not artifact_key:
@@ -158,11 +170,14 @@ class BaseService(ABC):
             return
 
         try:
+            # Convert content to string if needed
             if isinstance(content, dict):
                 import json
                 content = json.dumps(content, indent=2, ensure_ascii=False)
             elif not isinstance(content, str):
                 content = str(content)
+            
+            # Save to repository
             self.repository.save_artifact(
                 run_id=state["run_id"],
                 stage=self.agent_name,
@@ -216,3 +231,12 @@ class BaseService(ABC):
                 return {"repo_url": state["repo_url"]}
         """
         return {}
+
+    def _format_agent_name(self) -> str:
+        """
+        Format agent name for display in logs.
+        
+        Returns:
+            Formatted agent name (e.g., "ingest" -> "Ingest")
+        """
+        return self.agent_name.replace('_', ' ').title()

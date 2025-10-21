@@ -1,0 +1,53 @@
+"""
+Application constants
+"""
+
+# Workflow types
+WORKFLOW_TYPE_CI = "CI"
+WORKFLOW_TYPE_CD = "CD"
+WORKFLOW_TYPE_RELEASE = "RELEASE"
+WORKFLOW_TYPE_SCHEDULED = "SCHEDULED"
+WORKFLOW_TYPE_MANUAL = "MANUAL"
+WORKFLOW_TYPE_UNKNOWN = "UNKNOWN"
+
+# Risk levels
+RISK_LEVEL_LOW = "LOW"
+RISK_LEVEL_MEDIUM = "MEDIUM"
+RISK_LEVEL_HIGH = "HIGH"
+
+# Change scopes
+CHANGE_SCOPE_DOCS_ONLY = "DOCS_ONLY"
+CHANGE_SCOPE_CODE = "CODE"
+CHANGE_SCOPE_INFRASTRUCTURE = "INFRASTRUCTURE"
+CHANGE_SCOPE_DEPLOYMENT = "DEPLOYMENT"
+
+# Issue severities
+SEVERITY_LOW = "low"
+SEVERITY_MEDIUM = "medium"
+SEVERITY_HIGH = "high"
+
+# Run statuses
+RUN_STATUS_STARTED = "started"
+RUN_STATUS_COMPLETED = "completed"
+RUN_STATUS_FAILED = "failed"
+
+# PR statuses
+PR_STATUS_CREATED = "created"
+PR_STATUS_MERGED = "merged"
+PR_STATUS_CLOSED = "closed"
+
+# Tool names
+TOOL_INGEST = "ingest"
+TOOL_CLASSIFY = "classify"
+TOOL_VALIDATE = "validate"
+TOOL_ANALYSE = "analyse"
+TOOL_FIX = "fix"
+TOOL_RISK_ASSESSMENT = "risk_assessment"
+TOOL_SECURITY_SCAN = "security_scan"
+TOOL_REVIEW = "review"
+TOOL_RESOLVE = "resolve"
+
+# Decision actions
+ACTION_RUN = "run"
+ACTION_SKIP = "skip"
+ACTION_COMPLETE = "complete"

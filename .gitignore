@@ -12,6 +12,8 @@ __pycache__/
 *.manifest
 *.spec
 
+# config
+.env
 # Virtual environments
 venv/
 .env/
@@ -29,6 +31,7 @@ __pycache__/
 # ENVIRONMENT & CONFIG
 # ------------------------------------------------------------------------------
 # Secrets and credentials
+.env
 *.env.local
 *.env.production
 .envrc

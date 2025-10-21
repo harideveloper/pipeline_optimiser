@@ -1,67 +1,70 @@
-# tests/test_agent.py
-import requests
 import json
-import os
+import requests
+from app.utils.logger import setup_logging, get_logger
+
+setup_logging()
+logger = get_logger(__name__, "PipelineTestAgent")
+
+# env vars
+endpoint = "http://localhost:8091/optimise"
+repo_url = "https://github.com/harideveloper/multi-tech-test-repo"
+pipeline_path_in_repo = ".github/workflows/production-deploy.yaml"
+build_log_path_in_repo = ".github/workflows/production-deploy.log"
+branch = "main"
+pr_create = True
+
 
 def test_optimise_pipeline():
-    # Check if GitHub token is set
-    gh_token = os.getenv("GITHUB_TOKEN")
-    if not gh_token:
-        print("⚠️  Warning: GITHUB_TOKEN not set. PR creation will be skipped.")
-    
+
     payload = {
-        "repo_url": "https://github.com/harideveloper/multi-tech-test-repo",
-        "pipeline_path_in_repo": ".github/workflows/docs-ci.yaml",
-        "build_log_path_in_repo": ".github/workflows/docs-ci.log",
-        "branch": "main",
-        "pr_create": True
+        "repo_url": repo_url,
+        "pipeline_path_in_repo": pipeline_path_in_repo,
+        "build_log_path_in_repo": build_log_path_in_repo,
+        "branch": branch,
+        "pr_create": pr_create
     }
-    
-    print("🚀 Starting pipeline optimisation...\n")
-    res = requests.post("http://localhost:8091/optimise", json=payload)
-    
+    logger.info("Starting pipeline optimisation...", correlation_id="SYSTEM")
+
     try:
+        res = requests.post("http://localhost:8091/optimise", json=payload)
         result = res.json()
     except json.JSONDecodeError:
-        print("❌ API did not return valid JSON")
-        print(res.text)
+        logger.error(
+            f"API did not return valid JSON. Response: {res.text}",
+            correlation_id="SYSTEM"
+        )
         return
-    
+    except requests.RequestException as e:
+        logger.error(f"Error making request to API: {str(e)}", correlation_id="SYSTEM")
+        return
+
     if result.get("status") != "success":
-        print("❌ API returned error:", json.dumps(result, indent=2))
+        logger.error(
+            f"API returned error: {json.dumps(result, indent=2)}",
+            correlation_id="SYSTEM"
+        )
         return
-    
-    print("✅ API returned success.\n")
-    
-    # Print workflow info
-    print("━" * 60)
-    print("📊 WORKFLOW ANALYSIS")
-    print("━" * 60)
-    print(f"\n🔍 Workflow Type: {result.get('workflow_type', 'UNKNOWN')}")
-    print(f"⚠️  Risk Level: {result.get('risk_level', 'UNKNOWN')}")
-    print(f"⏱️  Duration: {result.get('duration', 0):.2f}s")
-    print(f"🔧 Tools Executed: {result.get('tools_executed', 0)}")
-    
-    tools = result.get('tools', [])
-    if tools:
-        print(f"\n📝 Execution Flow:")
-        print(f"   {' → '.join(tools)}")
-    
-    # Print PR info
-    print("\n" + "━" * 60)
-    print("🔗 PULL REQUEST")
-    print("━" * 60)
-    
+
+    workflow_type = result.get("workflow_type", "UNKNOWN")
+    risk_level = result.get("risk_level", "UNKNOWN")
+    duration = result.get("duration", 0)
+    tools_executed = result.get("tools_executed", 0)
+    tools = result.get("tools", [])
     pr_url = result.get("pr_url")
+
+    logger.info(
+        f"Workflow Type: {workflow_type} | Risk Level: {risk_level} | "
+        f"Duration: {duration:.2f}s | Tools Executed: {tools_executed}",
+        correlation_id="SYSTEM"
+    )
+
+    if tools:
+        logger.info(f"Execution Flow: {' → '.join(tools)}", correlation_id="SYSTEM")
+
     if pr_url:
-        print(f"\n✅ PR successfully created!")
-        print(f"   {pr_url}")
+        logger.info(f"PR successfully created: {pr_url}", correlation_id="SYSTEM")
     else:
-        print("\nℹ️  No PR created")
-        if not gh_token:
-            print("   Reason: GITHUB_TOKEN not configured")
-    
-    print("\n" + "━" * 60)
+        logger.info("No PR created.", correlation_id="SYSTEM")
 
 if __name__ == "__main__":
     test_optimise_pipeline()
