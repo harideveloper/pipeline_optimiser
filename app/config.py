@@ -23,6 +23,7 @@ class Config:
 
     # API Keys
     OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
+    ANTHROPIC_API_KEY: Optional[str] = os.getenv("ANTHROPIC_API_KEY")
     GITHUB_TOKEN: Optional[str] = os.getenv("GITHUB_TOKEN")
 
     # Model Configuration
@@ -66,6 +67,7 @@ class Config:
         required_vars = {
             # Core credentials
             "OPENAI_API_KEY": cls.OPENAI_API_KEY,
+            "ANTHROPIC_API_KEY": cls.ANTHROPIC_API_KEY,
             "GITHUB_TOKEN": cls.GITHUB_TOKEN,
 
             # Models / LLM configuration

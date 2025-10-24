@@ -1,5 +1,6 @@
 """
-Resolver Agent - Resolves pipeline issues by creating PRs with optimised YAML.
+Enhanced Resolver Agent - Resolves pipeline issues by creating PRs with optimised YAML.
+Now includes comprehensive LLM review confidence information in PR comments.
 """
 
 from typing import Dict, Any, Optional
@@ -20,10 +21,7 @@ class Resolver(BaseService):
     Handles resolution of pipeline issues by pushing optimised YAML 
     to GitHub and creating a pull request.
     
-    Integrates with GitHub API to:
-    - Create feature branches
-    - Commit optimised YAML
-    - Create pull requests with detailed descriptions
+    Enhanced with detailed LLM review confidence information.
     """
 
     def __init__(self, gh_token: Optional[str] = None):
@@ -56,7 +54,8 @@ class Resolver(BaseService):
         correlation_id: Optional[str] = None,
         pr_create: bool = True,
         analysis_result: Optional[Dict[str, Any]] = None,
-        risk_assessment: Optional[Dict[str, Any]] = None
+        risk_assessment: Optional[Dict[str, Any]] = None,
+        llm_review: Optional[Dict[str, Any]] = None  # NEW: Added llm_review parameter
     ) -> Optional[str]:
         """
         Push optimised YAML to repo and optionally create a pull request.
@@ -70,6 +69,7 @@ class Resolver(BaseService):
             pr_create: Whether to create a pull request (default: True)
             analysis_result: Optional analysis results for PR description
             risk_assessment: Optional risk assessment for PR description
+            llm_review: Optional LLM review results with confidence scores
             
         Returns:
             URL of created PR, or None if pr_create=False
@@ -109,7 +109,8 @@ class Resolver(BaseService):
                     file_path=file_path,
                     correlation_id=correlation_id,
                     analysis_result=analysis_result,
-                    risk_assessment=risk_assessment
+                    risk_assessment=risk_assessment,
+                    llm_review=llm_review  # NEW: Pass llm_review to PR creation
                 )
                 return pr_url
             
@@ -153,7 +154,7 @@ class Resolver(BaseService):
             return state
 
         try:
-            # Create PR
+            # Create PR with LLM review data
             pr_url = self.run(
                 repo_url=state["repo_url"],
                 optimised_yaml=state["optimised_yaml"],
@@ -162,7 +163,8 @@ class Resolver(BaseService):
                 correlation_id=correlation_id,
                 pr_create=True,
                 analysis_result=state.get("analysis_result"),
-                risk_assessment=state.get("risk_assessment")
+                risk_assessment=state.get("risk_assessment"),
+                llm_review=state.get("llm_review")  # NEW: Pass llm_review from state
             )
 
             if pr_url:
@@ -207,20 +209,22 @@ class Resolver(BaseService):
             repo_url: GitHub repository URL
             
         Returns:
-            Repository name in format 'owner/repo'
+            Repository name in format "owner/repo"
             
         Raises:
-            ResolverError: If URL format is invalid
+            ResolverError: If URL is invalid
         """
-        try:
-            # Handle both HTTPS and SSH URLs
-            if "github.com/" in repo_url:
-                repo_name = repo_url.split("github.com/")[-1].rstrip("/").rstrip(".git")
-                return repo_name
-            else:
-                raise ResolverError(f"Invalid GitHub URL format: {repo_url}")
-        except Exception as e:
-            raise ResolverError(f"Failed to extract repo name from URL: {e}") from e
+        # Remove trailing slashes
+        url = repo_url.rstrip("/")
+        
+        # Handle different URL formats
+        if "github.com/" in url:
+            # Extract owner/repo from URL
+            parts = url.split("github.com/")[1].split("/")
+            if len(parts) >= 2:
+                return f"{parts[0]}/{parts[1].replace('.git', '')}"
+        
+        raise ResolverError(f"Invalid GitHub repository URL: {repo_url}")
 
     def _create_branch(
         self,
@@ -230,7 +234,7 @@ class Resolver(BaseService):
         correlation_id: Optional[str] = None
     ) -> None:
         """
-        Create a new branch for the PR.
+        Create a new branch from base branch.
         
         Args:
             repo: GitHub repository object
@@ -238,22 +242,19 @@ class Resolver(BaseService):
             base_branch: Base branch to branch from
             correlation_id: Request correlation ID
         """
+        # Get base branch SHA
+        base_ref = repo.get_git_ref(f"heads/{base_branch}")
+        base_sha = base_ref.object.sha
+        
+        # Create new branch
         try:
-            base = repo.get_branch(base_branch)
-            logger.debug(
-                f"Base branch: {base_branch} (SHA: {base.commit.sha[:7]})",
-                correlation_id=correlation_id
-            )
-            
-            # Create new branch
-            repo.create_git_ref(ref=f"refs/heads/{pr_branch}", sha=base.commit.sha)
-            logger.debug(f"Created new branch: {pr_branch}", correlation_id=correlation_id)
-            
+            repo.create_git_ref(ref=f"refs/heads/{pr_branch}", sha=base_sha)
+            logger.debug(f"Created branch: {pr_branch}", correlation_id=correlation_id)
         except GithubException as e:
             if e.status == 422:
-                logger.warning(f"Branch {pr_branch} already exists", correlation_id=correlation_id)
+                # Branch already exists
+                logger.warning(f"Branch already exists: {pr_branch}", correlation_id=correlation_id)
             else:
-                logger.warning(f"Branch creation issue: {e}", correlation_id=correlation_id)
                 raise
 
     def _commit_changes(
@@ -265,29 +266,24 @@ class Resolver(BaseService):
         correlation_id: Optional[str] = None
     ) -> None:
         """
-        Commit optimised YAML to the branch.
+        Commit changes to the branch.
         
         Args:
             repo: GitHub repository object
-            file_path: Path to file in repository
-            optimised_yaml: Optimised YAML content
+            file_path: Path to file to update/create
+            optimised_yaml: Content to commit
             pr_branch: Branch to commit to
             correlation_id: Request correlation ID
         """
         # Check if file exists
         file_exists = False
         file_sha = None
-        
         try:
-            existing_file = repo.get_contents(file_path, ref=pr_branch)
-            file_sha = existing_file.sha
+            file_content = repo.get_contents(file_path, ref=pr_branch)
             file_exists = True
-            logger.debug(f"File exists, will update: {file_path}", correlation_id=correlation_id)
-        except GithubException as e:
-            if e.status == 404:
-                logger.debug(f"File does not exist, will create: {file_path}", correlation_id=correlation_id)
-            else:
-                logger.warning(f"Error checking file existence: {e}", correlation_id=correlation_id)
+            file_sha = file_content.sha
+        except GithubException:
+            pass
 
         # Build commit message
         commit_message = f"Optimise CI/CD pipeline: {file_path}"
@@ -321,7 +317,8 @@ class Resolver(BaseService):
         file_path: str,
         correlation_id: Optional[str] = None,
         analysis_result: Optional[Dict[str, Any]] = None,
-        risk_assessment: Optional[Dict[str, Any]] = None
+        risk_assessment: Optional[Dict[str, Any]] = None,
+        llm_review: Optional[Dict[str, Any]] = None  # NEW: Added llm_review parameter
     ) -> str:
         """
         Create a pull request.
@@ -334,6 +331,7 @@ class Resolver(BaseService):
             correlation_id: Request correlation ID
             analysis_result: Analysis results for PR description
             risk_assessment: Risk assessment for PR description
+            llm_review: LLM review results with confidence scores
             
         Returns:
             URL of created PR
@@ -351,7 +349,13 @@ class Resolver(BaseService):
             return pr_url
 
         # Build PR content
-        pr_body = self._build_pr_body(file_path, correlation_id, analysis_result, risk_assessment)
+        pr_body = self._build_pr_body(
+            file_path,
+            correlation_id,
+            analysis_result,
+            risk_assessment,
+            llm_review  # NEW: Pass llm_review to body builder
+        )
         pr_title = f"Optimise CI/CD Pipeline: {file_path}"
         if correlation_id:
             pr_title += f" [{correlation_id}]"
@@ -372,93 +376,198 @@ class Resolver(BaseService):
         file_path: str,
         correlation_id: Optional[str] = None,
         analysis_result: Optional[Dict[str, Any]] = None,
-        risk_assessment: Optional[Dict[str, Any]] = None
+        risk_assessment: Optional[Dict[str, Any]] = None,
+        llm_review: Optional[Dict[str, Any]] = None
     ) -> str:
         """
-        Build PR description with available information.
-        
-        Args:
-            file_path: Path to file being changed
-            correlation_id: Request correlation ID
-            analysis_result: Analysis results
-            risk_assessment: Risk assessment
-            
-        Returns:
-            Formatted PR description
+        Build compact PR description with clear separation between optimiser and reviewer.
         """
-        body_parts = [
-            f"This PR applies automated optimisations to `{file_path}` to improve CI/CD pipeline efficiency.\n"
-        ]
-
+        body_parts = []
+        
+        # Header
+        body_parts.append(f"Automated optimisation for `{file_path}`")
         if correlation_id:
-            body_parts.append(f"\n**Correlation ID**: `{correlation_id}`\n")
-
-        # Add analysis results
+            body_parts.append(f" | Correlation ID: `{correlation_id}`")
+        body_parts.append("\n\n")
+        
+        # optimiser Results Section
+        body_parts.append("## Optimiser Summary\n\n")
+        
         if analysis_result:
             self._add_analysis_section(body_parts, analysis_result)
         else:
-            body_parts.append(
-                "\n## Changes Applied\n"
-                "- Optimised pipeline configuration\n"
-                "- Improved resource utilisation\n"
-            )
+            body_parts.append("optimised pipeline configuration\n")
 
-        # Add risk assessment
+        # Reviewer Results Section (if available)
+        if llm_review:
+            self._add_llm_review_section(body_parts, llm_review)
+
+        # Risk assessment in compact format if present
         if risk_assessment:
             self._add_risk_assessment_section(body_parts, risk_assessment)
 
         # Footer
         body_parts.append(
             "\n---\n"
-            "*This PR was automatically generated by the Pipeline Optimiser Agent.*"
+            "*Auto-generated by Pipeline optimiser*"
         )
 
         return "".join(body_parts)
 
+    def _add_llm_review_section(self, body_parts: list, llm_review: Dict[str, Any]) -> None:
+        """
+        Add compact LLM review information to PR body.
+        Professional format without emojis, organized and space-efficient.
+        """
+        body_parts.append("\n---\n\n## Critic Review\n\n")
+        
+        # Overall confidence scores in compact format
+        fix_confidence = llm_review.get("fix_confidence", 0.0)
+        merge_confidence = llm_review.get("merge_confidence", 0.0)
+        quality_score = llm_review.get("quality_score", 0)
+        
+        # Determine status text
+        status = self._get_status_text(merge_confidence)
+        
+        body_parts.append(
+            f"**Confidence**: Fix {fix_confidence:.0%} | Merge {merge_confidence:.0%} | "
+            f"Quality {quality_score}/10 | Status: {status}\n"
+        )
+        
+        # Count issues
+        issue_reviews = llm_review.get("issue_reviews", [])
+        regressions = llm_review.get("regressions", [])
+        unresolved = llm_review.get("unresolved_issues", [])
+        recommendations = llm_review.get("recommendations", [])
+        
+        # Summary line
+        summary_parts = []
+        if issue_reviews:
+            fixed = sum(1 for r in issue_reviews if r.get("properly_fixed", False))
+            summary_parts.append(f"{fixed}/{len(issue_reviews)} issues resolved")
+        if regressions:
+            summary_parts.append(f"{len(regressions)} potential regressions")
+        if unresolved:
+            summary_parts.append(f"{len(unresolved)} unresolved")
+        
+        if summary_parts:
+            body_parts.append(f"**Summary**: {' | '.join(summary_parts)}\n")
+        
+        # Compact per-issue review (only show if not all properly fixed)
+        if issue_reviews:
+            issues_to_show = [r for r in issue_reviews if not r.get("properly_fixed", True) or r.get("confidence", 1.0) < 0.8]
+            if issues_to_show:
+                body_parts.append("\n**Issue Review**:\n")
+                for review in issues_to_show:
+                    issue_id = review.get("issue_id", "?")
+                    issue_confidence = review.get("confidence", 0.0)
+                    fixed = review.get("properly_fixed", False)
+                    status_text = "FIXED" if fixed else "PARTIAL"
+                    body_parts.append(f"- Issue #{issue_id}: {status_text} ({issue_confidence:.0%} confidence)\n")
+        
+        # Regressions in compact format
+        if regressions:
+            body_parts.append("\n**Regressions Detected**:\n")
+            for idx, regression in enumerate(regressions, 1):
+                reg_desc = regression.get("description", "Unknown")
+                reg_severity = regression.get("severity", "medium").upper()
+                body_parts.append(f"{idx}. [{reg_severity}] {reg_desc}\n")
+        
+        # Unresolved issues in compact format
+        if unresolved:
+            body_parts.append("\n**Unresolved**:\n")
+            for idx, issue in enumerate(unresolved, 1):
+                issue_desc = issue.get("description", "Unknown")
+                body_parts.append(f"{idx}. {issue_desc}\n")
+        
+        # Recommendations in compact format (max 3)
+        if recommendations:
+            body_parts.append("\n**Recommendations**:\n")
+            for idx, rec in enumerate(recommendations[:3], 1):
+                body_parts.append(f"{idx}. {rec}\n")
+            if len(recommendations) > 3:
+                body_parts.append(f"*...and {len(recommendations) - 3} more*\n")
+        
+        # Notes only if present and not too long
+        notes = llm_review.get("notes", "")
+        if notes and len(notes) < 200:
+            body_parts.append(f"\n**Notes**: {notes}\n")
+
+    def _get_status_text(self, merge_confidence: float) -> str:
+        """Get compact status text based on confidence."""
+        if merge_confidence >= 0.8:
+            return "Ready to merge"
+        elif merge_confidence >= 0.5:
+            return "Review recommended"
+        elif merge_confidence >= 0.25:
+            return "Careful review required"
+        else:
+            return "Manual intervention needed"
+
     def _add_analysis_section(self, body_parts: list, analysis_result: Dict[str, Any]) -> None:
-        """Add analysis results to PR body."""
+        """
+        Add compact analysis results to PR body.
+        """
         issues = analysis_result.get("issues_detected", [])
         fixes = analysis_result.get("suggested_fixes", [])
-        improvement = analysis_result.get("expected_improvement", "")
+        expected = analysis_result.get("expected_improvement", "")
 
+        # Issues in compact format
         if issues:
-            body_parts.append("\n## Issues Detected\n")
+            body_parts.append("**Issues Detected**:\n")
             for i, issue in enumerate(issues, 1):
-                body_parts.append(f"{i}. {issue}\n")
+                if isinstance(issue, dict):
+                    desc = issue.get("description", "No description")
+                    sev = issue.get("severity", "medium").upper()
+                    loc = issue.get("location", "unknown")
+                    body_parts.append(f"{i}. [{sev}] {desc} (`{loc}`)\n")
+                else:
+                    body_parts.append(f"{i}. {issue}\n")
+            body_parts.append("\n")
 
+        # Fixes in compact format
         if fixes:
-            body_parts.append("\n## Changes Applied\n")
+            body_parts.append("**Changes Applied**:\n")
             for i, fix in enumerate(fixes, 1):
-                body_parts.append(f"{i}. {fix}\n")
+                if isinstance(fix, dict):
+                    fix_desc = fix.get("fix", "No description")
+                    body_parts.append(f"{i}. {fix_desc}\n")
+                else:
+                    body_parts.append(f"{i}. {fix}\n")
+            body_parts.append("\n")
 
-        if improvement:
-            body_parts.append(f"\n## Expected Improvement\n{improvement}\n")
+        # Expected improvement
+        if expected:
+            body_parts.append(f"**Expected Impact**: {expected}\n")
 
     def _add_risk_assessment_section(self, body_parts: list, risk_assessment: Dict[str, Any]) -> None:
-        """Add risk assessment to PR body."""
-        body_parts.append("\n## Risk Assessment\n")
+        """Add compact risk assessment to PR body."""
+        body_parts.append("\n---\n\n## Risk Assessment\n\n")
         
         risk_score = risk_assessment.get("risk_score", 0)
-        severity = risk_assessment.get("severity", "unknown")
+        severity = risk_assessment.get("severity", "unknown").upper()
         safe_merge = risk_assessment.get("safe_to_auto_merge", True)
         manual_approval = risk_assessment.get("requires_manual_approval", False)
         breaking_changes = risk_assessment.get("breaking_changes", [])
         affected = risk_assessment.get("affected_components", [])
-        rollback = risk_assessment.get("rollback_plan", "")
 
-        body_parts.append(f"- **Risk Score**: {risk_score}/100\n")
-        body_parts.append(f"- **Severity**: {severity}\n")
-        body_parts.append(f"- **Safe to Auto-Merge**: {'Yes' if safe_merge else 'No'}\n")
-        body_parts.append(f"- **Manual Approval Required**: {'Yes' if manual_approval else 'No'}\n")
+        # Single line summary
+        merge_status = "Safe" if safe_merge else "Review required"
+        approval_status = "Manual approval needed" if manual_approval else "Auto-merge allowed"
+        
+        body_parts.append(
+            f"**Risk Score**: {risk_score}/100 ({severity}) | "
+            f"**Merge**: {merge_status} | "
+            f"**Approval**: {approval_status}\n"
+        )
 
+        # Breaking changes (compact)
         if breaking_changes:
-            body_parts.append(f"\n### Breaking Changes ({len(breaking_changes)})\n")
-            for i, change in enumerate(breaking_changes, 1):
-                body_parts.append(f"{i}. {change}\n")
+            body_parts.append(f"\n**Breaking Changes** ({len(breaking_changes)}): {', '.join(breaking_changes[:3])}")
+            if len(breaking_changes) > 3:
+                body_parts.append(f" *+{len(breaking_changes) - 3} more*")
+            body_parts.append("\n")
 
+        # Affected components (compact)
         if affected:
-            body_parts.append("\n### Affected Components\n")
-            body_parts.append(", ".join(affected) + "\n")
-
-        if rollback:
-            body_parts.append(f"\n### Rollback Plan\n{rollback}\n")
+            body_parts.append(f"**Affected**: {', '.join(affected)}\n")

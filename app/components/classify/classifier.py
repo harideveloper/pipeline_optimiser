@@ -24,11 +24,11 @@ from app.constants import (
     CHANGE_SCOPE_INFRASTRUCTURE,
     CHANGE_SCOPE_DEPLOYMENT,
     TOOL_VALIDATE,
-    TOOL_ANALYSE,
-    TOOL_FIX,
+    TOOL_OPTIMISE,
+    TOOL_POST_VALIDATE,
+    TOOL_CRITIC,
     TOOL_RISK_ASSESSMENT,
     TOOL_SECURITY_SCAN,
-    TOOL_REVIEW,
     TOOL_RESOLVE
 )
 from app.exceptions import ClassificationError
@@ -179,14 +179,20 @@ class Classifier(BaseService):
         Returns:
             Ordered list of tool names to execute
         """
-        base_plan = [TOOL_VALIDATE, TOOL_ANALYSE, TOOL_FIX]
+        # Base plan with both validations
+        base_plan = [
+            TOOL_VALIDATE,        
+            TOOL_OPTIMISE,
+            TOOL_POST_VALIDATE,    
+            TOOL_CRITIC        
+        ]
 
         if risk_level == RISK_LEVEL_HIGH:
-            plan = base_plan + [TOOL_RISK_ASSESSMENT, TOOL_SECURITY_SCAN, TOOL_REVIEW]
+            plan = base_plan + [TOOL_RISK_ASSESSMENT, TOOL_SECURITY_SCAN]
         elif risk_level == RISK_LEVEL_MEDIUM:
-            plan = base_plan + [TOOL_SECURITY_SCAN, TOOL_REVIEW]
-        else:  # LOW
-            plan = base_plan + [TOOL_REVIEW]
+            plan = base_plan + [TOOL_SECURITY_SCAN]
+        else:
+            plan = base_plan
 
         if pr_create:
             plan.append(TOOL_RESOLVE)

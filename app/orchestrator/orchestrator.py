@@ -7,14 +7,23 @@ from typing import Dict, Any
 from datetime import datetime
 
 from langgraph.graph import StateGraph, END
-from openai import OpenAI
+# from openai import OpenAI
 
-from app.repository.pipeline_repository import PipelineRepository
 from app.utils.correlation import generate_correlation_id
 from app.utils.logger import get_logger
-from app.config import config
-
+# from app.config import config
+from app.components.decide.decision import Decision
+from app.components.classify.classifier import Classifier
+from app.components.ingest.ingestor import Ingestor
+from app.components.validate.validator import Validator
+from app.components.optimise.optimiser import Optimiser
+from app.components.resolve.resolver import Resolver
+from app.components.critique.critic import Critic
+from app.components.risk.risk_assessor import RiskAssessor
+from app.components.scan.security_scanner import SecurityScanner
+from app.repository.pipeline_repository import PipelineRepository
 from app.orchestrator.state import PipelineState
+from app.repository.pipeline_repository import PipelineRepository
 from app.orchestrator.nodes import (
     plan_node,
     decision_node,
@@ -22,16 +31,7 @@ from app.orchestrator.nodes import (
     should_continue,
 )
 
-from app.components.decision import Decision
-from app.components.classifier import Classifier
-from app.components.ingestor import Ingestor
-from app.components.validator import Validator
-from app.components.analyser import Analyser
-from app.components.fixer import Fixer
-from app.components.resolver import Resolver
-from app.components.risk_assessor import RiskAssessor
-from app.components.security_scanner import SecurityScanner
-from app.components.reviewer import Reviewer
+
 
 logger = get_logger(__name__, "PipelineOrchestrator")
 
@@ -43,28 +43,30 @@ class PipelineOrchestrator:
         """Initialize orchestrator with all components."""
         self.model_name = model_name
         self.temperature = temperature
-        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
+        # self.client = OpenAI(api_key=config.OPENAI_API_KEY)
         self.repository = PipelineRepository()
         self.classifier = Classifier()
         self.decision_agent = Decision(
             model=model_name,
             temperature=temperature
         )
+
+        validator = Validator()
         self.tools = {
             "ingest": Ingestor(),
-            "validate": Validator(),
-            "analyse": Analyser(),
+            "validate": validator,
+            "optimise": Optimiser(),
+            "post_validate": validator,
+            "critic": Critic(),
             "risk_assessment": RiskAssessor(),
             "security_scan": SecurityScanner(),
-            "fix": Fixer(),
-            "review": Reviewer(),
             "resolve": Resolver(),
         }
         
         # Build LangGraph workflow
         self.graph = self._build_graph()
         
-        logger.debug(
+        logger.info(
             f"Initialized Orchestrator: model={model_name}, temperature={temperature}",
             correlation_id="INIT"
         )
@@ -110,7 +112,7 @@ class PipelineOrchestrator:
         branch: str = "main",
         pr_create: bool = False
     ) -> Dict[str, Any]:
-        """ Run the pipeline optimization workflow."""
+        """ Run the pipeline optimisation workflow."""
         correlation_id = generate_correlation_id()
         run_id = self.repository.start_run(
             repo_url=repo_url,
@@ -119,7 +121,7 @@ class PipelineOrchestrator:
             correlation_id=correlation_id
         )
         logger.info(
-            f"Starting pipeline optimization (run_id={run_id}, repo={repo_url})",
+            f"Starting pipeline optimisation (run_id={run_id}, repo={repo_url})",
             correlation_id=correlation_id
         )
         
@@ -146,6 +148,14 @@ class PipelineOrchestrator:
             "next_action": "",
             "agent_reasoning": "",
             "_current_tool": "",
+            "validation_result": {},
+            "post_validation_result": {},
+            "optimisation_result": {},
+            "llm_review": {},
+            "risk_assessment": {},
+            "security_scan": {},
+            "review": {},
+            "resolve_result": {},
         }
         
         try:

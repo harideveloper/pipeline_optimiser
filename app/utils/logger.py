@@ -109,6 +109,7 @@ def _configure_third_party_loggers():
         "httpcore": logging.WARNING,
         "urllib3": logging.WARNING,
         "openai": logging.WARNING,
+        "anthropic._base_client": logging.WARNING,
         "uvicorn.access": logging.WARNING,
         "uvicorn.error": logging.INFO,
         "git": logging.WARNING,
@@ -192,8 +193,11 @@ def enable_debug_mode():
     """Enable debug mode with verbose logging."""
     set_log_level("DEBUG")
     
-    logging.getLogger("httpx").setLevel(logging.DEBUG)
-    logging.getLogger("git").setLevel(logging.DEBUG)
+    logging.getLogger("anthropic").setLevel(logging.WARNING)
+    logging.getLogger("anthropic._base_client").setLevel(logging.WARNING)
+    logging.getLogger("stainless").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.INFO)
+    logging.getLogger("git").setLevel(logging.INFO)
     
     logger = get_logger(__name__, "LoggingConfig")
     logger.debug("Debug mode enabled", correlation_id="SYSTEM")

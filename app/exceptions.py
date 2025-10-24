@@ -34,7 +34,7 @@ class ResolverError(PipelineOptimiserError):
     """Raised when PR creation fails"""
     pass
 
-class ReviewError(PipelineOptimiserError):
+class CriticError(PipelineOptimiserError):
     """Raised when ReviewError fails"""
     pass
 

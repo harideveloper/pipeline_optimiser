@@ -1,12 +1,14 @@
 """
-Shared LLM client used across all components invoking LLM calls
+Unified LLM client supporting both OpenAI and Anthropic models.
 """
-import json
-import time
-from typing import Dict, Any, Optional
-from openai import OpenAI, RateLimitError, APIError
 
-from app.config import config
+import os
+import json
+import re
+from typing import Optional
+import anthropic
+from openai import OpenAI
+
 from app.utils.logger import get_logger
 
 logger = get_logger(__name__, "LLMClient")
@@ -14,118 +16,148 @@ logger = get_logger(__name__, "LLMClient")
 
 class LLMClient:
     """
-    Reusable llm client
+    Unified LLM client supporting both OpenAI and Anthropic models.
+    Automatically detects provider based on model name.
     """
     
     def __init__(
-        self,
-        model: str = None,
-        temperature: float = None,
-        max_retries: int = None,
-        timeout: int = None
+        self, 
+        model: str = "gpt-4o-mini", 
+        temperature: float = 0,
+        provider: Optional[str] = None
     ):
-        self.client = OpenAI(api_key=config.OPENAI_API_KEY)
-        self.model = model or config.MODEL_NAME
-        self.temperature = temperature if temperature is not None else config.MODEL_TEMPERATURE
-        self.max_retries = max_retries or config.LLM_MAX_RETRIES
-        self.timeout = timeout or config.LLM_TIMEOUT
+        """
+        Initialize LLM client.
+        
+        Args:
+            model: Model identifier (e.g., "gpt-4o-mini" or "claude-sonnet-4-20250514")
+            temperature: Sampling temperature (0-1)
+            provider: Optional explicit provider ("openai" or "anthropic")
+                     If None, auto-detected from model name
+        """
+        self.model = model
+        self.temperature = temperature
+        
+        # Auto-detect provider if not specified
+        if provider is None:
+            if model.startswith("claude"):
+                self.provider = "anthropic"
+            elif model.startswith("gpt") or model.startswith("o1"):
+                self.provider = "openai"
+            else:
+                raise ValueError(
+                    f"Cannot auto-detect provider for model '{model}'. "
+                    "Please specify provider='openai' or provider='anthropic'"
+                )
+        else:
+            self.provider = provider.lower()
+        
+        # Initialize appropriate client
+        if self.provider == "openai":
+            self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        elif self.provider == "anthropic":
+            self.client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        else:
+            raise ValueError(f"Unsupported provider: {self.provider}")
+        
+        logger.debug(
+            f"Initialized {self.provider.upper()} client with model: {self.model}",
+            correlation_id="INIT"
+        )
     
     def chat_completion(
-        self,
-        system_prompt: str,
+        self, 
+        system_prompt: str, 
         user_prompt: str,
-        response_format: Optional[Dict[str, str]] = None,
-        correlation_id: Optional[str] = None
+        max_tokens: int = 4096
     ) -> str:
         """
-        Make a chat completion request with retry logic
+        Get chat completion from the LLM.
         
         Args:
-            system_prompt: System message
+            system_prompt: System instructions
             user_prompt: User message
-            response_format: Optional response format (e.g., {"type": "json_object"})
-            correlation_id: Request correlation ID
+            max_tokens: Maximum tokens in response
             
         Returns:
-            Response content as string
-            
-        Raises:
-            Exception: If all retries fail
+            Model response as string
         """
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-        
-        for attempt in range(self.max_retries):
-            try:
-                kwargs = {
-                    "model": self.model,
-                    "messages": messages,
-                    "temperature": self.temperature,
-                    "timeout": self.timeout
-                }
-                
-                if response_format:
-                    kwargs["response_format"] = response_format
-                
-                response = self.client.chat.completions.create(**kwargs)
-                return response.choices[0].message.content.strip()
-                
-            except RateLimitError as e:
-                if attempt < self.max_retries - 1:
-                    wait_time = 2 ** attempt  # Exponential backoff
-                    logger.warning(
-                        f"Rate limit hit, retrying in {wait_time}s (attempt {attempt + 1}/{self.max_retries})",
-                        correlation_id=correlation_id
-                    )
-                    time.sleep(wait_time)
-                else:
-                    logger.error("Max retries exceeded for rate limit", correlation_id=correlation_id)
-                    raise
-                    
-            except APIError as e:
-                if attempt < self.max_retries - 1:
-                    wait_time = 2 ** attempt
-                    logger.warning(
-                        f"API error, retrying in {wait_time}s: {e}",
-                        correlation_id=correlation_id
-                    )
-                    time.sleep(wait_time)
-                else:
-                    logger.error(f"Max retries exceeded for API error: {e}", correlation_id=correlation_id)
-                    raise
-                    
-            except Exception as e:
-                logger.exception(f"Unexpected error: {e}", correlation_id=correlation_id)
-                raise
+        if self.provider == "openai":
+            return self._openai_completion(system_prompt, user_prompt, max_tokens)
+        elif self.provider == "anthropic":
+            return self._anthropic_completion(system_prompt, user_prompt, max_tokens)
+        else:
+            raise ValueError(f"Unsupported provider: {self.provider}")
     
-    def parse_json_response(
-        self,
-        response: str,
-        correlation_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+    def _openai_completion(
+        self, 
+        system_prompt: str, 
+        user_prompt: str,
+        max_tokens: int
+    ) -> str:
+        """OpenAI API completion."""
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=self.temperature,
+            max_tokens=max_tokens
+        )
+        return response.choices[0].message.content
+    
+    def _anthropic_completion(
+        self, 
+        system_prompt: str, 
+        user_prompt: str,
+        max_tokens: int
+    ) -> str:
+        """Anthropic (Claude) API completion."""
+        message = self.client.messages.create(
+            model=self.model,
+            max_tokens=max_tokens,
+            temperature=self.temperature,
+            system=system_prompt,
+            messages=[
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+        return message.content[0].text
+    
+    def parse_json_response(self, response: str, correlation_id: Optional[str] = None) -> dict:
         """
-        Parse JSON response, handling markdown code blocks
+        Parse JSON from LLM response, handling markdown code blocks.
         
         Args:
-            response: Raw response string
-            correlation_id: Request correlation ID
+            response: Raw LLM response text
+            correlation_id: Optional correlation ID for logging
             
         Returns:
-            Parsed JSON dictionary
+            Parsed JSON as dictionary
             
         Raises:
-            ValueError: If JSON parsing fails
+            json.JSONDecodeError: If response contains invalid JSON
         """
-        import re
-        
-        # Remove markdown code blocks
-        cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", response, flags=re.DOTALL).strip()
+        # Try to find JSON in markdown code blocks first
+        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            # Try to find raw JSON object
+            json_match = re.search(r'\{.*\}', response, re.DOTALL)
+            if json_match:
+                json_str = json_match.group(0)
+            else:
+                json_str = response
         
         try:
-            return json.loads(cleaned)
+            return json.loads(json_str)
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON: {e}", correlation_id=correlation_id)
-            logger.debug(f"Raw response: {response}", correlation_id=correlation_id)
-            raise ValueError(f"Invalid JSON from model: {e}")
+            # Log error with context
+            error_msg = f"Failed to parse JSON response: {e}"
+            logger.error(
+                f"{error_msg}\nResponse preview: {response[:200]}...",
+                correlation_id=correlation_id
+            )
+            raise json.JSONDecodeError(error_msg, response, e.pos)

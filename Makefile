@@ -15,8 +15,8 @@ load-env:
 	export $(grep -v '^#' .env | xargs)
 
 run-agent:
-	$(PYTHON) -m uvicorn app.main:app --host 0.0.0.0 --port 8091
-# 	$(PYTHON) -m uvicorn app.main:app --host 0.0.0.0 --port 8091 --reload
+# 	$(PYTHON) -m uvicorn app.main:app --host 0.0.0.0 --port 8091
+	$(PYTHON) -m uvicorn app.main:app --host 0.0.0.0 --port 8091 --reload
 
 test-agent:
 	PYTHONPATH=. $(PYTHON) -m tests.test_agent

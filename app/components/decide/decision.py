@@ -6,7 +6,7 @@ Uses LLM to decide whether to run or skip tools based on workflow state.
 from typing import Dict, Any, Optional
 
 from app.components.base_service import BaseService
-from app.orchestrator.prompts import DECISION_SYSTEM_PROMPT, build_decision_context
+from app.components.decide.prompt import DECISION_SYSTEM_PROMPT, build_decision_context
 from app.utils.logger import get_logger
 from app.utils.llm_client import LLMClient
 from app.config import config
@@ -18,7 +18,7 @@ logger = get_logger(__name__, "Decision")
 
 class Decision(BaseService):
     """
-    decison service that decides whether to run or skip tools. Uses workflow state and tool context 
+    Decision service that decides whether to run or skip tools. Uses workflow state and tool context 
     to make intelligent decisions about which tools should be executed or skipped.
     """
 
@@ -65,12 +65,10 @@ class Decision(BaseService):
             # Build decision context from state
             context = build_decision_context(state, next_tool)
             
-            # Get LLM decision
+            # Get LLM decision - removed correlation_id parameter
             raw_response = self.llm_client.chat_completion(
                 system_prompt=DECISION_SYSTEM_PROMPT,
-                user_prompt=context,
-                response_format={"type": "json_object"},
-                correlation_id=correlation_id
+                user_prompt=context
             )
             
             # Parse decision
@@ -98,8 +96,14 @@ class Decision(BaseService):
                 "reasoning": reasoning
             }
             
+        except DecisionError as e:
+            # Specific decision errors - log and re-raise
+            logger.error(f"Decision error for {next_tool}: {e}", correlation_id=correlation_id)
+            raise
+            
         except Exception as e:
-            logger.error(f"Decision failed: {e}", correlation_id=correlation_id)
+            # Unexpected errors - log and default to skip
+            logger.error(f"Decision failed for {next_tool}: {e}", correlation_id=correlation_id)
             # Default to skip on error to be safe
             return {
                 "action": ACTION_SKIP,

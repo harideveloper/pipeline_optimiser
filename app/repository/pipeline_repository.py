@@ -78,7 +78,7 @@ class PipelineRepository:
                 trigger_source=trigger_source
             )
             
-            logger.info(
+            logger.debug(
                 f"Run started: run_id={run_id}, repo_id={repo_id}",
                 correlation_id=correlation_id
             )

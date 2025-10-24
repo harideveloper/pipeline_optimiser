@@ -90,6 +90,22 @@ def decision_node(
         state["agent_reasoning"] = f"Workflow stopped due to error: {state['error']}"
         return state
     
+    # Early Exit: Post-validation failed
+    post_validation_result = state.get("post_validation_result", {})
+    if post_validation_result and not post_validation_result.get("valid", False):
+        logger.info(
+            "Post-validation failed - stopping workflow early (skip risk, security, resolve)",
+            correlation_id=cid
+        )
+        state["next_action"] = "complete"
+        state["agent_reasoning"] = "Post-validation failed, YAML is structurally broken"
+        return state
+    
+    # EARLY EXIT 2: LLM review detected regressions
+    llm_review_result = state.get("llm_review", {})
+    merge_confidence = llm_review_result.get("merge_confidence", None)
+
+    
     # Check if plan is complete
     if state["plan_index"] >= len(state["plan"]):
         logger.info(
@@ -108,7 +124,7 @@ def decision_node(
         correlation_id=cid
     )
     
-    # Ask decision component : run or skip?
+    # Ask decision component: run or skip?
     state["_current_tool"] = next_tool
     state = decision_agent._execute(state)
     
@@ -129,8 +145,6 @@ def execute_node(
     
     Execute or skip the current tool based on the decision made
     by the decision_node.
-    
-    FIXED: All tools now called consistently via execute_node()
     
     Args:
         state: Current pipeline state
@@ -162,16 +176,28 @@ def execute_node(
     
     try:
         tool = tools[tool_name]
-        result = tool.execute_node(state)
-        state.update(result)
+        
+        # Call tool's _execute method
+        result = tool._execute(state)
+        
+        # Explicitly update state fields for LangGraph TypedDict
+        for key, value in result.items():
+            if key in state:
+                state[key] = value
+        
         if tool_name not in state["completed_tools"]:
             state["completed_tools"].append(tool_name)
+        
+        # Build log entry with tool-specific details
         log_entry = f"{tool_name}: completed"
-        if tool_name == "analyse":
+        
+        if tool_name == "optimise":
             issues = state.get("analysis_result", {}).get("issues_detected", [])
-            log_entry += f" ({len(issues)} issues found)"
+            fixes = len(state.get("optimisation_result", {}).get("applied_fixes", []))
+            log_entry += f" ({len(issues)} issues found, {fixes} fixes applied)"
         elif tool_name == "resolve" and state.get("pr_url"):
             log_entry += f" (PR: {state['pr_url']})"
+        
         state["execution_log"].append(log_entry)
         logger.debug(f"Completed: {tool_name}", correlation_id=cid)
         
@@ -180,7 +206,6 @@ def execute_node(
             f"Tool execution failed: {tool_name} - {e}",
             correlation_id=cid
         )
-        # Note: Allow the workflow to continue if possible and capture error if required at component level
         state["execution_log"].append(f"{tool_name}: FAILED - {e}")
     
     state["plan_index"] += 1
