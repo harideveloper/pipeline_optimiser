@@ -55,7 +55,7 @@ class Resolver(BaseService):
         pr_create: bool = True,
         analysis_result: Optional[Dict[str, Any]] = None,
         risk_assessment: Optional[Dict[str, Any]] = None,
-        llm_review: Optional[Dict[str, Any]] = None  # NEW: Added llm_review parameter
+        critic_review: Optional[Dict[str, Any]] = None
     ) -> Optional[str]:
         """
         Push optimised YAML to repo and optionally create a pull request.
@@ -69,7 +69,7 @@ class Resolver(BaseService):
             pr_create: Whether to create a pull request (default: True)
             analysis_result: Optional analysis results for PR description
             risk_assessment: Optional risk assessment for PR description
-            llm_review: Optional LLM review results with confidence scores
+            critic_review: Optional LLM review results with confidence scores
             
         Returns:
             URL of created PR, or None if pr_create=False
@@ -110,7 +110,7 @@ class Resolver(BaseService):
                     correlation_id=correlation_id,
                     analysis_result=analysis_result,
                     risk_assessment=risk_assessment,
-                    llm_review=llm_review  # NEW: Pass llm_review to PR creation
+                    critic_review=critic_review
                 )
                 return pr_url
             
@@ -164,7 +164,7 @@ class Resolver(BaseService):
                 pr_create=True,
                 analysis_result=state.get("analysis_result"),
                 risk_assessment=state.get("risk_assessment"),
-                llm_review=state.get("llm_review")  # NEW: Pass llm_review from state
+                critic_review=state.get("critic_review")
             )
 
             if pr_url:
@@ -318,7 +318,7 @@ class Resolver(BaseService):
         correlation_id: Optional[str] = None,
         analysis_result: Optional[Dict[str, Any]] = None,
         risk_assessment: Optional[Dict[str, Any]] = None,
-        llm_review: Optional[Dict[str, Any]] = None  # NEW: Added llm_review parameter
+        critic_review: Optional[Dict[str, Any]] = None
     ) -> str:
         """
         Create a pull request.
@@ -331,7 +331,7 @@ class Resolver(BaseService):
             correlation_id: Request correlation ID
             analysis_result: Analysis results for PR description
             risk_assessment: Risk assessment for PR description
-            llm_review: LLM review results with confidence scores
+            critic_review: critic review results with confidence scores
             
         Returns:
             URL of created PR
@@ -354,7 +354,7 @@ class Resolver(BaseService):
             correlation_id,
             analysis_result,
             risk_assessment,
-            llm_review  # NEW: Pass llm_review to body builder
+            critic_review 
         )
         pr_title = f"Optimise CI/CD Pipeline: {file_path}"
         if correlation_id:
@@ -377,7 +377,7 @@ class Resolver(BaseService):
         correlation_id: Optional[str] = None,
         analysis_result: Optional[Dict[str, Any]] = None,
         risk_assessment: Optional[Dict[str, Any]] = None,
-        llm_review: Optional[Dict[str, Any]] = None
+        critic_review: Optional[Dict[str, Any]] = None
     ) -> str:
         """
         Build compact PR description with clear separation between optimiser and reviewer.
@@ -399,8 +399,8 @@ class Resolver(BaseService):
             body_parts.append("optimised pipeline configuration\n")
 
         # Reviewer Results Section (if available)
-        if llm_review:
-            self._add_llm_review_section(body_parts, llm_review)
+        if critic_review:
+            self._add_critic_review_section(body_parts, critic_review)
 
         # Risk assessment in compact format if present
         if risk_assessment:
@@ -414,7 +414,7 @@ class Resolver(BaseService):
 
         return "".join(body_parts)
 
-    def _add_llm_review_section(self, body_parts: list, llm_review: Dict[str, Any]) -> None:
+    def _add_critic_review_section(self, body_parts: list, critic_review: Dict[str, Any]) -> None:
         """
         Add compact LLM review information to PR body.
         Professional format without emojis, organized and space-efficient.
@@ -422,9 +422,9 @@ class Resolver(BaseService):
         body_parts.append("\n---\n\n## Critic Review\n\n")
         
         # Overall confidence scores in compact format
-        fix_confidence = llm_review.get("fix_confidence", 0.0)
-        merge_confidence = llm_review.get("merge_confidence", 0.0)
-        quality_score = llm_review.get("quality_score", 0)
+        fix_confidence = critic_review.get("fix_confidence", 0.0)
+        merge_confidence = critic_review.get("merge_confidence", 0.0)
+        quality_score = critic_review.get("quality_score", 0)
         
         # Determine status text
         status = self._get_status_text(merge_confidence)
@@ -435,10 +435,10 @@ class Resolver(BaseService):
         )
         
         # Count issues
-        issue_reviews = llm_review.get("issue_reviews", [])
-        regressions = llm_review.get("regressions", [])
-        unresolved = llm_review.get("unresolved_issues", [])
-        recommendations = llm_review.get("recommendations", [])
+        issue_reviews = critic_review.get("issue_reviews", [])
+        regressions = critic_review.get("regressions", [])
+        unresolved = critic_review.get("unresolved_issues", [])
+        recommendations = critic_review.get("recommendations", [])
         
         # Summary line
         summary_parts = []
@@ -489,7 +489,7 @@ class Resolver(BaseService):
                 body_parts.append(f"*...and {len(recommendations) - 3} more*\n")
         
         # Notes only if present and not too long
-        notes = llm_review.get("notes", "")
+        notes = critic_review.get("notes", "")
         if notes and len(notes) < 200:
             body_parts.append(f"\n**Notes**: {notes}\n")
 
@@ -545,18 +545,21 @@ class Resolver(BaseService):
         body_parts.append("\n---\n\n## Risk Assessment\n\n")
         
         risk_score = risk_assessment.get("risk_score", 0)
-        severity = risk_assessment.get("severity", "unknown").upper()
+        overall_risk = risk_assessment.get("overall_risk", "unknown").upper()
         safe_merge = risk_assessment.get("safe_to_auto_merge", True)
         manual_approval = risk_assessment.get("requires_manual_approval", False)
         breaking_changes = risk_assessment.get("breaking_changes", [])
         affected = risk_assessment.get("affected_components", [])
 
+        # Scale risk_score from 0-10 to 0-100
+        risk_score_scaled = int(risk_score * 10)
+        
         # Single line summary
         merge_status = "Safe" if safe_merge else "Review required"
         approval_status = "Manual approval needed" if manual_approval else "Auto-merge allowed"
         
         body_parts.append(
-            f"**Risk Score**: {risk_score}/100 ({severity}) | "
+            f"**Risk Score**: {risk_score_scaled}/100 ({overall_risk}) | "
             f"**Merge**: {merge_status} | "
             f"**Approval**: {approval_status}\n"
         )

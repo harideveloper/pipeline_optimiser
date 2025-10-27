@@ -102,8 +102,8 @@ def decision_node(
         return state
     
     # EARLY EXIT 2: LLM review detected regressions
-    llm_review_result = state.get("llm_review", {})
-    merge_confidence = llm_review_result.get("merge_confidence", None)
+    critic_review = state.get("critic_review", {})
+    merge_confidence = critic_review.get("merge_confidence", None)
 
     
     # Check if plan is complete

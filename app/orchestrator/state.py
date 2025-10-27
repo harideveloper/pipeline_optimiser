@@ -44,7 +44,7 @@ class PipelineState(TypedDict):
     validation_result: Dict[str, Any]      
     post_validation_result: Dict[str, Any]
     optimisation_result: Dict[str, Any]    
-    llm_review: Dict[str, Any]             
+    critic_review: Dict[str, Any]             
     risk_assessment: Dict[str, Any]        
     security_scan: Dict[str, Any]          
     review: Dict[str, Any]                 

@@ -22,12 +22,8 @@ class IngestionError(PipelineOptimiserError):
     """Raised when ingestion fails"""
     pass
 
-class AnalysisError(PipelineOptimiserError):
-    """Raised when analysis fails"""
-    pass
-
-class FixerError(PipelineOptimiserError):
-    """Raised when fixer fails"""
+class OptimiserError(PipelineOptimiserError):
+    """Raised when optimise fails"""
     pass
 
 class ResolverError(PipelineOptimiserError):

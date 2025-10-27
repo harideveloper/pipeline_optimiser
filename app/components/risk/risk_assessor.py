@@ -1,6 +1,5 @@
 """
 Risk Assessor - Evaluates risk of applied pipeline optimisations.
-Uses LLM to assess potential impact and risk level of changes that were made.
 """
 
 from typing import Dict, Any, List, Optional
@@ -16,34 +15,19 @@ logger = get_logger(__name__, "RiskAssessor")
 
 
 class RiskAssessor(BaseService):
-    """
-    Risk assessment service that evaluates applied pipeline optimisations.
-    Analyzes the actual changes made, not proposed changes.
-    """
+    """Risk assessment service that evaluates applied pipeline optimisations."""
 
-    def __init__(self, model: str = None, temperature: float = None):
-        """
-        Initialize Risk Assessor with LLM configuration.
-        
-        Args:
-            model: LLM model name (defaults to config.MODEL_NAME)
-            temperature: LLM temperature (defaults to 0.1 for consistent assessments)
-        """
+    def __init__(self, model: str = None, temperature: float = None, max_tokens: int = None):
         super().__init__(agent_name="risk_assessment")
         
-        self.model = model or config.MODEL_NAME
-        self.temperature = temperature if temperature is not None else 0.1
+        cfg = config.get_risk_config()
+        self.model = model or cfg["model"]
+        self.temperature = temperature if temperature is not None else cfg["temperature"]
+        self.max_tokens = max_tokens or cfg["max_tokens"]
         
-        # Use shared LLM client
-        self.llm_client = LLMClient(
-            model=self.model,
-            temperature=self.temperature
-        )
+        self.llm_client = LLMClient(model=self.model, temperature=self.temperature)
         
-        logger.debug(
-            f"Initialised Risk Assessor: model={self.model}, temperature={self.temperature}",
-            correlation_id="INIT"
-        )
+        logger.debug(f"Initialised Risk Assessor: model={self.model}, temperature={self.temperature}", correlation_id="INIT")
 
     def run(
         self, 
@@ -53,27 +37,9 @@ class RiskAssessor(BaseService):
         original_yaml: str,
         optimised_yaml: str
     ) -> Dict[str, Any]:
-        """
-        Assess risk of applied optimisations.
-        
-        Args:
-            state: Current workflow state (for correlation_id)
-            issues_detected: List of issues that were found
-            applied_fixes: List of fixes that were applied
-            original_yaml: Original pipeline YAML
-            optimised_yaml: optimised pipeline YAML
-            
-        Returns:
-            Dictionary with risk assessment results including:
-            - overall_risk: Overall risk level (low/medium/high)
-            - risk_score: Numerical risk score (0-10)
-            - risks: List of identified risks
-            - recommendations: Safety recommendations
-            - analysis: Detailed analysis
-        """
+        """Assess risk of applied optimisations."""
         correlation_id = state.get("correlation_id")
         
-        # Quick path: No changes = no risk
         if not applied_fixes or len(applied_fixes) == 0:
             logger.info("No changes applied - zero risk", correlation_id=correlation_id)
             return {
@@ -84,16 +50,11 @@ class RiskAssessor(BaseService):
                 "analysis": "No optimisations were applied, so there is no risk from changes."
             }
         
-        logger.debug(
-            f"Assessing risk for {len(applied_fixes)} applied changes",
-            correlation_id=correlation_id
-        )
+        logger.debug(f"Assessing risk for {len(applied_fixes)} applied changes", correlation_id=correlation_id)
         
         try:
-            # Calculate initial risk score based on heuristics
             heuristic_score = self._calculate_heuristic_risk(issues_detected, applied_fixes)
             
-            # Build detailed context for LLM
             context = build_risk_context(
                 issues_detected,
                 applied_fixes,
@@ -102,23 +63,14 @@ class RiskAssessor(BaseService):
                 heuristic_score
             )
             
-            # Get LLM risk assessment
             raw_response = self.llm_client.chat_completion(
                 system_prompt=RISK_ASSESSOR_SYSTEM_PROMPT,
                 user_prompt=context,
-                max_tokens=2048
+                max_tokens=self.max_tokens
             )
             
-            # Parse assessment
             assessment = self.llm_client.parse_json_response(raw_response, correlation_id)
-            
-            # Validate and enhance assessment
-            assessment = self._validate_and_enhance_assessment(
-                assessment, 
-                heuristic_score,
-                applied_fixes,
-                correlation_id
-            )
+            assessment = self._validate_and_enhance_assessment(assessment, heuristic_score, applied_fixes, correlation_id)
             
             logger.info(
                 f"Risk assessment complete: {assessment['overall_risk'].upper()} risk "
@@ -129,37 +81,17 @@ class RiskAssessor(BaseService):
             return assessment
             
         except RiskAssessorError as e:
-            # Specific risk assessment errors - log and re-raise
-            logger.error(
-                f"Risk assessment failed: {e}",
-                correlation_id=correlation_id
-            )
+            logger.error(f"Risk assessment failed: {e}", correlation_id=correlation_id)
             raise
-            
         except Exception as e:
-            # Unexpected errors - log and raise as RiskAssessorError
             error_msg = f"Failed to assess risk: {e}"
             logger.error(error_msg, correlation_id=correlation_id)
             raise RiskAssessorError(error_msg)
 
-    def _calculate_heuristic_risk(
-        self,
-        issues: List[Dict[str, Any]],
-        fixes: List[Dict[str, Any]]
-    ) -> float:
-        """
-        Calculate initial risk score using heuristics.
-        
-        Args:
-            issues: Detected issues
-            fixes: Applied fixes
-            
-        Returns:
-            Risk score (0-10)
-        """
+    def _calculate_heuristic_risk(self, issues: List[Dict[str, Any]], fixes: List[Dict[str, Any]]) -> float:
+        """Calculate initial risk score using heuristics."""
         score = 0.0
         
-        # Base score from number of changes (0-3 points)
         num_fixes = len(fixes)
         if num_fixes >= 5:
             score += 3
@@ -168,13 +100,11 @@ class RiskAssessor(BaseService):
         elif num_fixes >= 1:
             score += 1
         
-        # Add points for severity of issues fixed (0-4 points)
         severity_weights = {"high": 1.5, "medium": 1.0, "low": 0.5}
         for issue in issues:
             severity = issue.get("severity", "medium").lower()
             score += severity_weights.get(severity, 1.0)
         
-        # Add points for risky change types (0-3 points)
         risky_keywords = {
             "security": 2.0,
             "deploy": 1.5,
@@ -190,9 +120,8 @@ class RiskAssessor(BaseService):
             for keyword, weight in risky_keywords.items():
                 if keyword in fix_text:
                     score += weight
-                    break  # Only count once per fix
+                    break
         
-        # Clamp to 0-10 range
         return min(10.0, max(0.0, score))
 
     def _validate_and_enhance_assessment(
@@ -202,19 +131,7 @@ class RiskAssessor(BaseService):
         applied_fixes: List[Dict[str, Any]],
         correlation_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """
-        Validate and enhance risk assessment with additional logic.
-        
-        Args:
-            assessment: Raw assessment from LLM
-            heuristic_score: Pre-calculated heuristic score
-            applied_fixes: List of applied fixes
-            correlation_id: Optional correlation ID for logging
-            
-        Returns:
-            Validated and enhanced assessment
-        """
-        # Ensure required fields exist with defaults
+        """Validate and enhance risk assessment with additional logic."""
         validated = {
             "overall_risk": assessment.get("overall_risk", "medium"),
             "risk_score": assessment.get("risk_score", 5.0),
@@ -225,45 +142,30 @@ class RiskAssessor(BaseService):
             "heuristic_score": heuristic_score
         }
         
-        # Validate risk level
         valid_levels = ["low", "medium", "high"]
         if validated["overall_risk"] not in valid_levels:
-            logger.warning(
-                f"Invalid risk level '{validated['overall_risk']}', defaulting to 'medium'",
-                correlation_id=correlation_id
-            )
+            logger.warning(f"Invalid risk level '{validated['overall_risk']}', defaulting to 'medium'", correlation_id=correlation_id)
             validated["overall_risk"] = "medium"
         
-        # Validate and normalize risk score
         try:
             risk_score = float(validated["risk_score"])
-            validated["risk_score"] = max(0, min(10, risk_score))  # Clamp to 0-10
+            validated["risk_score"] = max(0, min(10, risk_score))
         except (ValueError, TypeError):
-            logger.warning(
-                f"Invalid risk score '{validated['risk_score']}', using heuristic: {heuristic_score}",
-                correlation_id=correlation_id
-            )
+            logger.warning(f"Invalid risk score '{validated['risk_score']}', using heuristic: {heuristic_score}", correlation_id=correlation_id)
             validated["risk_score"] = heuristic_score
         
-        # Ensure consistency between risk_score and overall_risk
         score = validated["risk_score"]
         expected_level = "low" if score < 4 else "medium" if score < 7 else "high"
         
         if validated["overall_risk"] != expected_level:
-            logger.debug(
-                f"Adjusting risk level from {validated['overall_risk']} to {expected_level} "
-                f"to match score {score}",
-                correlation_id=correlation_id
-            )
+            logger.debug(f"Adjusting risk level from {validated['overall_risk']} to {expected_level} to match score {score}", correlation_id=correlation_id)
             validated["overall_risk"] = expected_level
         
-        # Ensure lists are actually lists
         if not isinstance(validated["risks"], list):
             validated["risks"] = []
         if not isinstance(validated["recommendations"], list):
             validated["recommendations"] = []
         
-        # Add standard recommendation if missing
         if not validated["recommendations"]:
             validated["recommendations"] = [
                 "Test the optimised pipeline in a non-production environment",
@@ -274,33 +176,17 @@ class RiskAssessor(BaseService):
         return validated
 
     def _execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Execute risk assessment within workflow.
-        
-        Args:
-            state: Current workflow state
-            
-        Returns:
-            Updated state with risk_assessment results
-        """
+        """Execute risk assessment within workflow."""
         correlation_id = state.get("correlation_id")
         
-        # Extract optimisation results from state
         optimisation_result = state.get("optimisation_result", {})
         
         if not optimisation_result:
-            logger.warning(
-                "No optimisation results found in state - checking analysis_result",
-                correlation_id=correlation_id
-            )
+            logger.warning("No optimisation results found in state - checking analysis_result", correlation_id=correlation_id)
             
-            # Fallback to analysis_result if optimisation_result not present
             analysis_result = state.get("analysis_result", {})
             if not analysis_result:
-                logger.warning(
-                    "No optimisation or analysis results to assess",
-                    correlation_id=correlation_id
-                )
+                logger.warning("No optimisation or analysis results to assess", correlation_id=correlation_id)
                 state["risk_assessment"] = {
                     "overall_risk": "low",
                     "risk_score": 0,
@@ -310,18 +196,15 @@ class RiskAssessor(BaseService):
                 }
                 return state
             
-            # Build minimal structure from analysis_result
             issues_detected = analysis_result.get("issues_detected", [])
             applied_fixes = [{"fix": fix} for fix in analysis_result.get("suggested_fixes", [])]
         else:
-            # Use full optimisation_result
             issues_detected = optimisation_result.get("issues_detected", [])
             applied_fixes = optimisation_result.get("applied_fixes", [])
         
         original_yaml = state.get("pipeline_yaml", "")
         optimised_yaml = state.get("optimised_yaml", "")
         
-        # Run risk assessment
         try:
             assessment = self.run(
                 state=state,
@@ -331,13 +214,8 @@ class RiskAssessor(BaseService):
                 optimised_yaml=optimised_yaml
             )
             state["risk_assessment"] = assessment
-            
         except Exception as e:
-            logger.error(
-                f"Risk assessment execution failed: {e}",
-                correlation_id=correlation_id
-            )
-            # Provide conservative assessment on failure
+            logger.error(f"Risk assessment execution failed: {e}", correlation_id=correlation_id)
             state["risk_assessment"] = {
                 "overall_risk": "medium",
                 "risk_score": 5,
@@ -352,10 +230,4 @@ class RiskAssessor(BaseService):
         return state
 
     def _get_artifact_key(self) -> Optional[str]:
-        """
-        Get the state key for risk assessment artifact.
-        
-        Returns:
-            Key for accessing risk assessment in state
-        """
         return "risk_assessment"

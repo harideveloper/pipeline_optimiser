@@ -50,18 +50,18 @@ CRITICAL: Read these rules carefully for the CURRENT tool '{next_tool}'
    - SKIP if Optimised YAML Exists = false
    - If post_validate fails, STOP WORKFLOW (all subsequent tools SKIPPED)
 
-4. llm_review:
+4. critc:
    - RUN if post_validate passed
    - DO NOT block downstream steps regardless of confidence
    - Record fix_confidence and merge_confidence to state for PR comments
 
 5. risk_assessment:
-   - RUN for HIGH/MEDIUM risk workflows if llm_review merge_confidence >= 0.5 or was skipped
+   - RUN for HIGH/MEDIUM risk workflows if critic merge_confidence >= 0.5 or was skipped
    - SKIP for LOW risk workflows
    - SKIP if post_validate failed
 
 6. security_scan:
-   - RUN for HIGH/MEDIUM risk workflows if llm_review merge_confidence >= 0.5 or was skipped
+   - RUN for HIGH/MEDIUM risk workflows if critic merge_confidence >= 0.5 or was skipped
    - SKIP for LOW risk workflows
    - SKIP if post_validate failed
 
@@ -69,16 +69,16 @@ CRITICAL: Read these rules carefully for the CURRENT tool '{next_tool}'
    - SKIP if pr_create = false
    - SKIP if post_validate failed
    - RUN if llm_review completed
-   - For llm_review merge_confidence < 0.25: RUN only if risk_score >= 50 AND no major security issues
-   - For llm_review merge_confidence >= 0.25: RUN if risk_score >= 50 AND no major security issues
+   - For critic merge_confidence < 0.25: RUN only if risk_score >= 50 AND no major security issues
+   - For critic merge_confidence >= 0.25: RUN if risk_score >= 50 AND no major security issues
 
 CONTEXT DATA (for reference only)
 ─────────────────────
 Validation Failed: {validation_failed}
 Post-Validation Failed: {post_validation_failed}
 Optimised YAML Exists: {optimised_yaml_exists}
-LLM Review Fix Confidence: {llm_review_fix_confidence}
-LLM Review Merge Confidence: {llm_review_merge_confidence}
+critic Confidence: {critic_review_fix_confidence}
+citic Merge Confidence: {critic_review_merge_confidence}
 Risk Score: {risk_score}
 Security Major Issues: {security_major_issues}
 Changes Applied: {changes_applied}
@@ -117,9 +117,9 @@ def build_decision_context(state: Dict[str, Any], next_tool: str) -> str:
     changes_applied = bool(optimise_result.get("changes_applied", False) or len(analysis_result.get("suggested_fixes", [])) > 0)
     optimised_yaml_exists = bool(state.get("optimised_yaml", "").strip())
     
-    llm_review_result = state.get("llm_review", {})
-    fix_confidence = llm_review_result.get("fix_confidence", None)
-    merge_confidence = llm_review_result.get("merge_confidence", None)
+    critic_review = state.get("critic_review", {})
+    fix_confidence = critic_review.get("fix_confidence", None)
+    merge_confidence = critic_review.get("merge_confidence", None)
     
     # Build analysis summary
     analysis_summary = ""
@@ -138,7 +138,7 @@ def build_decision_context(state: Dict[str, Any], next_tool: str) -> str:
     if optimise_result or optimised_yaml_exists:
         changes_count = len(analysis_result.get("suggested_fixes", []))
         analysis_summary += f"Optimisations Applied: {changes_count}\n"
-    if llm_review_result:
+    if critic_review:
         analysis_summary += (
             f"LLM Review: Fix Confidence={fix_confidence}, Merge Confidence={merge_confidence}\n"
         )
@@ -164,8 +164,8 @@ def build_decision_context(state: Dict[str, Any], next_tool: str) -> str:
         security_major_issues=security_major_issues,
         changes_applied=changes_applied,
         optimised_yaml_exists=optimised_yaml_exists,
-        llm_review_fix_confidence=fix_confidence,
-        llm_review_merge_confidence=merge_confidence
+        critic_review_fix_confidence=fix_confidence,
+        critic_review_merge_confidence=merge_confidence
     )
     
     return context

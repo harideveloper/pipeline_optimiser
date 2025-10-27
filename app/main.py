@@ -106,11 +106,7 @@ async def optimise_pipeline(request: OptimiseRequest):
     )
 
     try:
-        orchestrator = PipelineOrchestrator(
-            model_name=config.MODEL_NAME,
-            temperature=config.MODEL_TEMPERATURE,
-        )
-
+        orchestrator = PipelineOrchestrator()
         result = orchestrator.run(
             repo_url=request.repo_url,
             pipeline_path=request.pipeline_path_in_repo,

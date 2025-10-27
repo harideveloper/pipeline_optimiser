@@ -1,11 +1,10 @@
 """
 Configuration management with environment variables.
-Fail-fast on missing critical configuration.
 """
 
 import os
 import sys
-from typing import Optional
+from typing import Optional, Tuple, Dict, Any
 from dotenv import load_dotenv
 from app.utils.logger import get_logger
 
@@ -22,17 +21,32 @@ class Config:
     IS_LOCAL = os.getenv("IS_LOCAL", "false").lower() == "true"
 
     # API Keys
-    OPENAI_API_KEY: Optional[str] = os.getenv("OPENAI_API_KEY")
     ANTHROPIC_API_KEY: Optional[str] = os.getenv("ANTHROPIC_API_KEY")
     GITHUB_TOKEN: Optional[str] = os.getenv("GITHUB_TOKEN")
 
     # Model Configuration
-    MODEL_NAME: Optional[str] = os.getenv("MODEL_NAME")
-    MODEL_TEMPERATURE: Optional[str] = os.getenv("MODEL_TEMPERATURE")
-    ANALYSER_MODEL: Optional[str] = os.getenv("ANALYSER_MODEL")
-    RISK_ASSESSOR_MODEL: Optional[str] = os.getenv("RISK_ASSESSOR_MODEL")
     LLM_MAX_RETRIES: Optional[str] = os.getenv("LLM_MAX_RETRIES")
     LLM_TIMEOUT: Optional[str] = os.getenv("LLM_TIMEOUT")
+
+    DECISION_MODEL: Optional[str] = os.getenv("DECISION_MODEL")
+    CRITIC_MODEL: Optional[str] = os.getenv("CRITIC_MODEL")
+    OPTIMISER_MODEL: Optional[str] = os.getenv("OPTIMISER_MODEL")
+    RISK_MODEL: Optional[str] = os.getenv("RISK_MODEL")
+
+    DECISION_MODEL_TEMPERATURE: Optional[str] = os.getenv("DECISION_MODEL_TEMPERATURE")
+    CRITIC_MODEL_TEMPERATURE: Optional[str] = os.getenv("CRITIC_MODEL_TEMPERATURE")
+    OPTIMISER_MODEL_TEMPERATURE: Optional[str] = os.getenv("OPTIMISER_MODEL_TEMPERATURE")
+    RISK_MODEL_TEMPERATURE: Optional[str] = os.getenv("RISK_MODEL_TEMPERATURE")
+
+    DECISION_MODEL_TOKEN: Optional[str] = os.getenv("DECISION_MODEL_TOKEN")
+    CRITIC_MODEL_TOKEN: Optional[str] = os.getenv("CRITIC_MODEL_TOKEN")
+    OPTIMISER_MODEL_TOKEN: Optional[str] = os.getenv("OPTIMISER_MODEL_TOKEN")
+    RISK_MODEL_TOKEN: Optional[str] = os.getenv("RISK_MODEL_TOKEN")
+
+    # Critic Thresholds
+    CRITIC_DEFAULT_QUALITY_SCORE: Optional[str] = os.getenv("CRITIC_DEFAULT_QUALITY_SCORE", "7")
+    CRITIC_REGRESSION_PENALTY: Optional[str] = os.getenv("CRITIC_REGRESSION_PENALTY", "0.05")
+    CRITIC_UNRESOLVED_PENALTY: Optional[str] = os.getenv("CRITIC_UNRESOLVED_PENALTY", "0.02")
 
     # Database Configuration
     DB_HOST: Optional[str] = os.getenv("DB_HOST")
@@ -59,22 +73,31 @@ class Config:
     MAX_PLAN_TOOLS: Optional[str] = os.getenv("MAX_PLAN_TOOLS")
     ENABLE_PARALLEL_EXECUTION: Optional[str] = os.getenv("ENABLE_PARALLEL_EXECUTION")
 
-
     # Validation
     @classmethod
     def validate(cls) -> None:
         """Validate required environment variables and convert types."""
         required_vars = {
             # Core credentials
-            "OPENAI_API_KEY": cls.OPENAI_API_KEY,
             "ANTHROPIC_API_KEY": cls.ANTHROPIC_API_KEY,
             "GITHUB_TOKEN": cls.GITHUB_TOKEN,
 
             # Models / LLM configuration
-            "MODEL_NAME": cls.MODEL_NAME,
-            "MODEL_TEMPERATURE": cls.MODEL_TEMPERATURE,
-            "ANALYSER_MODEL": cls.ANALYSER_MODEL,
-            "RISK_ASSESSOR_MODEL": cls.RISK_ASSESSOR_MODEL,
+            "DECISION_MODEL": cls.DECISION_MODEL,
+            "CRITIC_MODEL": cls.CRITIC_MODEL,
+            "OPTIMISER_MODEL": cls.OPTIMISER_MODEL,
+            "RISK_MODEL": cls.RISK_MODEL,
+
+            "DECISION_MODEL_TEMPERATURE": cls.DECISION_MODEL_TEMPERATURE,
+            "CRITIC_MODEL_TEMPERATURE": cls.CRITIC_MODEL_TEMPERATURE,
+            "OPTIMISER_MODEL_TEMPERATURE": cls.OPTIMISER_MODEL_TEMPERATURE,
+            "RISK_MODEL_TEMPERATURE": cls.RISK_MODEL_TEMPERATURE,
+
+            "DECISION_MODEL_TOKEN": cls.DECISION_MODEL_TOKEN,
+            "CRITIC_MODEL_TOKEN": cls.CRITIC_MODEL_TOKEN,
+            "OPTIMISER_MODEL_TOKEN": cls.OPTIMISER_MODEL_TOKEN,
+            "RISK_MODEL_TOKEN": cls.RISK_MODEL_TOKEN,
+
             "LLM_MAX_RETRIES": cls.LLM_MAX_RETRIES,
             "LLM_TIMEOUT": cls.LLM_TIMEOUT,
 
@@ -105,12 +128,24 @@ class Config:
             )
             raise SystemExit(1)
 
-        
         # Convert numeric and boolean types
         try:
-            cls.MODEL_TEMPERATURE = float(cls.MODEL_TEMPERATURE)
             cls.LLM_MAX_RETRIES = int(cls.LLM_MAX_RETRIES)
             cls.LLM_TIMEOUT = int(cls.LLM_TIMEOUT)
+
+            cls.DECISION_MODEL_TEMPERATURE = float(cls.DECISION_MODEL_TEMPERATURE)
+            cls.CRITIC_MODEL_TEMPERATURE = float(cls.CRITIC_MODEL_TEMPERATURE)
+            cls.OPTIMISER_MODEL_TEMPERATURE = float(cls.OPTIMISER_MODEL_TEMPERATURE)
+            cls.RISK_MODEL_TEMPERATURE = float(cls.RISK_MODEL_TEMPERATURE)
+
+            cls.DECISION_MODEL_TOKEN = int(cls.DECISION_MODEL_TOKEN)
+            cls.CRITIC_MODEL_TOKEN = int(cls.CRITIC_MODEL_TOKEN)
+            cls.OPTIMISER_MODEL_TOKEN = int(cls.OPTIMISER_MODEL_TOKEN)
+            cls.RISK_MODEL_TOKEN = int(cls.RISK_MODEL_TOKEN)
+
+            cls.CRITIC_DEFAULT_QUALITY_SCORE = int(cls.CRITIC_DEFAULT_QUALITY_SCORE)
+            cls.CRITIC_REGRESSION_PENALTY = float(cls.CRITIC_REGRESSION_PENALTY)
+            cls.CRITIC_UNRESOLVED_PENALTY = float(cls.CRITIC_UNRESOLVED_PENALTY)
 
             cls.DB_PORT = int(cls.DB_PORT)
             cls.DB_POOL_SIZE = int(cls.DB_POOL_SIZE)
@@ -132,7 +167,6 @@ class Config:
         if not cls.SSL_CERT_FILE:
             logger.warning("SSL_CERT_FILE not set — using system defaults")
 
-
     @classmethod
     def get_db_connection_string(cls) -> str:
         """Return PostgreSQL connection string."""
@@ -146,9 +180,47 @@ class Config:
         )
         return conn_str
 
+    # Agent Configuration Methods
+    @classmethod
+    def get_decision_config(cls) -> Dict[str, Any]:
+        """Get configuration for Decision agent."""
+        return {
+            "model": cls.DECISION_MODEL,
+            "temperature": cls.DECISION_MODEL_TEMPERATURE,
+            "max_tokens": cls.DECISION_MODEL_TOKEN
+        }
+    
+    @classmethod
+    def get_optimiser_config(cls) -> Dict[str, Any]:
+        """Get configuration for Optimiser agent."""
+        return {
+            "model": cls.OPTIMISER_MODEL,
+            "temperature": cls.OPTIMISER_MODEL_TEMPERATURE,
+            "max_tokens": cls.OPTIMISER_MODEL_TOKEN
+        }
+    
+    @classmethod
+    def get_critic_config(cls) -> Dict[str, Any]:
+        """Get configuration for Critic agent."""
+        return {
+            "model": cls.CRITIC_MODEL,
+            "temperature": cls.CRITIC_MODEL_TEMPERATURE,
+            "max_tokens": cls.CRITIC_MODEL_TOKEN,
+            "default_quality_score": cls.CRITIC_DEFAULT_QUALITY_SCORE,
+            "regression_penalty": cls.CRITIC_REGRESSION_PENALTY,
+            "unresolved_penalty": cls.CRITIC_UNRESOLVED_PENALTY
+        }
+    
+    @classmethod
+    def get_risk_config(cls) -> Dict[str, Any]:
+        """Get configuration for Risk Assessor agent."""
+        return {
+            "model": cls.RISK_MODEL,
+            "temperature": cls.RISK_MODEL_TEMPERATURE,
+            "max_tokens": cls.RISK_MODEL_TOKEN
+        }
 
 
-# Runtime Validation for env vars
 config = Config()
 
 try:

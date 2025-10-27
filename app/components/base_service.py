@@ -114,11 +114,6 @@ class BaseService(ABC):
             )
             return state
 
-        logger.debug(
-            f"Executing: {self._format_agent_name()}",
-            correlation_id=correlation_id
-        )
-
         try:
             # Invoke subclass implementation
             state = self._execute(state)
