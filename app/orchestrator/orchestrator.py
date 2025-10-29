@@ -1,5 +1,5 @@
 """
-Pipline Optimiser Orchestrator
+Pipeline Optimiser Orchestrator
 """
 
 from typing import Dict, Any
@@ -47,7 +47,7 @@ class PipelineOrchestrator:
         
         self.graph = self._build_graph()
         
-        logger.info("Initialized Orchestrator", correlation_id="INIT")
+        logger.info("Initialised Orchestrator", correlation_id="INIT")
 
     def _build_graph(self) -> StateGraph:
         workflow = StateGraph(PipelineState)
@@ -66,7 +66,16 @@ class PipelineOrchestrator:
 
     def run(self, repo_url: str, pipeline_path: str, build_log_path: str = None, branch: str = "main", pr_create: bool = False) -> Dict[str, Any]:
         correlation_id = generate_correlation_id()
-        run_id = self.repository.start_run(repo_url=repo_url, branch=branch, trigger_source="API", correlation_id=correlation_id)
+        
+        # Start run with pipeline_path (required)
+        run_id = self.repository.start_run(
+            repo_url=repo_url,
+            pipeline_path=pipeline_path,
+            branch=branch,
+            trigger_source="API",
+            correlation_id=correlation_id
+        )
+        
         logger.info(f"Starting pipeline optimisation (run_id={run_id}, repo={repo_url})", correlation_id=correlation_id)
         
         initial_state: PipelineState = {
@@ -94,10 +103,9 @@ class PipelineOrchestrator:
             "validation_result": {},
             "post_validation_result": {},
             "optimisation_result": {},
-            "llm_review": {},
+            "critic_review": {},
             "risk_assessment": {},
             "security_scan": {},
-            "review": {},
             "resolve_result": {},
         }
         
@@ -107,7 +115,13 @@ class PipelineOrchestrator:
             duration = (datetime.now() - start_time).total_seconds()
 
             self._log_summary(final_state, duration)
-            self.repository.complete_run(run_id=run_id, correlation_id=correlation_id)
+            
+            # Complete run with duration
+            self.repository.complete_run(
+                run_id=run_id,
+                duration_seconds=duration,
+                correlation_id=correlation_id
+            )
             
             return {
                 "success": True,
@@ -121,7 +135,6 @@ class PipelineOrchestrator:
             
         except Exception as e:
             logger.exception(f"Workflow failed: {e}", correlation_id=correlation_id)
-            
             self.repository.fail_run(run_id=run_id, error=str(e), correlation_id=correlation_id)
             return {"success": False, "correlation_id": correlation_id, "error": str(e)}
 

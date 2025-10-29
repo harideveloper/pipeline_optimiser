@@ -64,8 +64,10 @@ class Config:
     LOG_FILE: Optional[str] = os.getenv("LOG_FILE")
 
     # SSL / Certificates
-    SSL_CERT_FILE: Optional[str] = os.getenv("SSL_CERT_FILE")
-    REQUESTS_CA_BUNDLE: Optional[str] = os.getenv("REQUESTS_CA_BUNDLE")
+    # SSL_CERT_FILE: Optional[str] = os.getenv("SSL_CERT_FILE")
+    # REQUESTS_CA_BUNDLE: Optional[str] = os.getenv("REQUESTS_CA_BUNDLE")
+    SSL_CERT_FILE: Optional[str] = os.getenv("SSL_CERT_FILE") if not IS_LOCAL else None
+    REQUESTS_CA_BUNDLE: Optional[str] = os.getenv("REQUESTS_CA_BUNDLE") if not IS_LOCAL else None
 
     # Git & Workflow Configuration
     GIT_CLONE_DEPTH: Optional[str] = os.getenv("GIT_CLONE_DEPTH")

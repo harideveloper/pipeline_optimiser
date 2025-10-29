@@ -95,6 +95,18 @@ class Classifier(BaseService):
             state["plan"] = self._generate_plan(profile.risk_level, state.get("pr_create", False))
             state["plan_index"] = 0
 
+            # Save classification to database immediately
+            try:
+                self.repository.update_run_metadata(
+                    run_id=state["run_id"],
+                    workflow_type=profile.workflow_type,
+                    risk_level=profile.risk_level,
+                    correlation_id=correlation_id
+                )
+                logger.debug(f"Classification saved to database: type={profile.workflow_type}, risk={profile.risk_level}", correlation_id=correlation_id)
+            except Exception as e:
+                logger.warning(f"Failed to save classification to database: {str(e)[:200]}", correlation_id=correlation_id)
+
             logger.info(
                 f"Classification complete: type={profile.workflow_type}, "
                 f"risk={profile.risk_level}, plan={len(state['plan'])} steps",

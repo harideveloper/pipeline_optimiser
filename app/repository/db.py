@@ -1,6 +1,6 @@
 """
 Database helper module for Pipeline Optimiser
-Handles Postgres interactions for repositories, runs, artifacts, issues, and PRs.
+Handles Postgres interactions for repositories, runs, artifacts, issues, reviews, decisions, and PRs.
 """
 
 import psycopg2.extras
@@ -15,32 +15,15 @@ logger = get_logger(__name__, "PipelineDB")
 
 # REPOSITORIES
 def get_or_create_repo(repo_url: str, default_branch: str = "main") -> int:
-    """
-    Get repository ID if exists, otherwise insert and return ID.
-    
-    Args:
-        repo_url: GitHub repository URL
-        default_branch: Default branch name (default: main)
-        
-    Returns:
-        Repository ID
-        
-    Raises:
-        DatabaseError: If database operation fails
-    """
+    """Get repository ID if exists, otherwise insert and return ID."""
     try:
         with db_pool.get_connection() as conn:
             with conn.cursor() as cur:
-                # Check if repository exists
-                cur.execute(
-                    "SELECT id FROM repositories WHERE repo_url = %s",
-                    (repo_url,)
-                )
+                cur.execute("SELECT id FROM repositories WHERE repo_url = %s", (repo_url,))
                 row = cur.fetchone()
                 if row:
                     return row["id"]
 
-                # Insert new repository
                 cur.execute(
                     "INSERT INTO repositories (repo_url, default_branch) VALUES (%s, %s) RETURNING id",
                     (repo_url, default_branch)
@@ -48,10 +31,7 @@ def get_or_create_repo(repo_url: str, default_branch: str = "main") -> int:
                 repo_id = cur.fetchone()["id"]
                 conn.commit()
                 
-                logger.debug(
-                    f"Created new repository record: {repo_url} (id={repo_id})",
-                    correlation_id="DB"
-                )
+                logger.debug(f"Created new repository record: {repo_url} (id={repo_id})", correlation_id="DB")
                 return repo_id
                 
     except Exception as e:
@@ -59,45 +39,36 @@ def get_or_create_repo(repo_url: str, default_branch: str = "main") -> int:
         raise DatabaseError(f"Failed to get/create repository: {e}") from e
 
 
-
 # RUNS
 def create_run(
     repo_id: int,
+    pipeline_path: str,
+    branch: str = "main",
     commit_sha: Optional[str] = None,
-    trigger_source: str = "API"
+    trigger_source: str = "API",
+    correlation_id: Optional[str] = None,
+    workflow_type: Optional[str] = None,
+    risk_level: Optional[str] = None
 ) -> int:
-    """
-    Create a new pipeline run.
-    
-    Args:
-        repo_id: Repository ID
-        commit_sha: Optional commit SHA
-        trigger_source: How run was triggered (API/Webhook/Schedule)
-        
-    Returns:
-        Run ID
-        
-    Raises:
-        DatabaseError: If database operation fails
-    """
+    """Create a new pipeline run."""
     try:
         with db_pool.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO runs (repo_id, commit_sha, trigger_source)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO runs (
+                        repo_id, pipeline_path, branch, commit_sha, 
+                        trigger_source, correlation_id, workflow_type, risk_level
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                     """,
-                    (repo_id, commit_sha, trigger_source)
+                    (repo_id, pipeline_path, branch, commit_sha, trigger_source, correlation_id, workflow_type, risk_level)
                 )
                 run_id = cur.fetchone()["id"]
                 conn.commit()
                 
-                logger.debug(
-                    f"Created new optimisation run record : {run_id} for repo_id {repo_id}",
-                    correlation_id="DB"
-                )
+                logger.debug(f"Created new optimisation run: {run_id} for repo_id {repo_id}", correlation_id="DB")
                 return run_id
                 
     except Exception as e:
@@ -108,40 +79,51 @@ def create_run(
 def update_run_status(
     run_id: int,
     status: str,
+    duration_seconds: Optional[float] = None,
     end_time: Optional[str] = None
 ) -> None:
-    """
-    Update run status.
-    
-    Args:
-        run_id: Run ID
-        status: New status (started/completed/failed)
-        end_time: Optional end time (default: NOW())
-        
-    Raises:
-        DatabaseError: If database operation fails
-    """
+    """Update run status."""
     try:
         with db_pool.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
                     UPDATE runs
-                    SET status = %s, end_time = COALESCE(%s, NOW())
+                    SET status = %s, duration_seconds = %s, end_time = COALESCE(%s, NOW())
                     WHERE id = %s
                     """,
-                    (status, end_time, run_id)
+                    (status, duration_seconds, end_time, run_id)
                 )
                 conn.commit()
-                
-                logger.debug(
-                    f"Updated optimisation run {run_id} status to {status}",
-                    correlation_id="DB"
-                )
+                logger.debug(f"Updated run {run_id} status to {status}", correlation_id="DB")
                 
     except Exception as e:
         logger.error(f"Failed to update run status: {e}", correlation_id="DB")
         raise DatabaseError(f"Failed to update run status: {e}") from e
+    
+def update_run_metadata(
+        run_id: int,
+        workflow_type: Optional[str] = None,
+        risk_level: Optional[str] = None
+    ) -> None:
+        """Update run metadata (workflow_type and risk_level)."""
+        try:
+            with db_pool.get_connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        UPDATE runs
+                        SET workflow_type = %s, risk_level = %s
+                        WHERE id = %s
+                        """,
+                        (workflow_type, risk_level, run_id)
+                    )
+                    conn.commit()
+                    logger.debug(f"Updated run {run_id} metadata: type={workflow_type}, risk={risk_level}", correlation_id="DB")
+                    
+        except Exception as e:
+            logger.error(f"Failed to update run metadata: {e}", correlation_id="DB")
+            raise DatabaseError(f"Failed to update run metadata: {e}") from e
 
 
 # ARTIFACTS
@@ -151,18 +133,7 @@ def insert_artifact(
     content: str,
     metadata: Optional[Dict[str, Any]] = None
 ) -> None:
-    """
-    Insert workflow artifact.
-    
-    Args:
-        run_id: Run ID
-        stage: Stage name (ingest/analyze/fix/etc)
-        content: Artifact content
-        metadata: Optional metadata dictionary
-        
-    Raises:
-        DatabaseError: If database operation fails
-    """
+    """Insert workflow artifact."""
     try:
         with db_pool.get_connection() as conn:
             with conn.cursor() as cur:
@@ -174,11 +145,7 @@ def insert_artifact(
                     (run_id, stage, content, psycopg2.extras.Json(metadata or {}))
                 )
                 conn.commit()
-                
-                logger.debug(
-                    f"Inserted artifact for run_id {run_id}, stage {stage}",
-                    correlation_id="DB"
-                )
+                logger.debug(f"Inserted artifact for run_id {run_id}, stage {stage}", correlation_id="DB")
                 
     except Exception as e:
         logger.error(f"Failed to insert artifact: {e}", correlation_id="DB")
@@ -191,41 +158,86 @@ def insert_issue(
     type: str,
     description: str,
     severity: str = "medium",
+    location: str = "unknown",
     suggested_fix: Optional[str] = None
 ) -> None:
-    """
-    Insert detected issue.
-    
-    Args:
-        run_id: Run ID
-        type: Issue type
-        description: Issue description
-        severity: Severity level (low/medium/high)
-        suggested_fix: Optional suggested fix
-        
-    Raises:
-        DatabaseError: If database operation fails
-    """
+    """Insert detected issue."""
     try:
         with db_pool.get_connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO issues (run_id, type, description, severity, suggested_fix)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO issues (run_id, type, description, severity, location, suggested_fix)
+                    VALUES (%s, %s, %s, %s, %s, %s)
                     """,
-                    (run_id, type, description, severity, suggested_fix)
+                    (run_id, type, description, severity, location, suggested_fix)
                 )
                 conn.commit()
-                
-                logger.debug(
-                    f"Inserted issue for run_id {run_id}, type {type}",
-                    correlation_id="DB"
-                )
+                logger.debug(f"Inserted issue for run_id {run_id}, type {type}", correlation_id="DB")
                 
     except Exception as e:
         logger.error(f"Failed to insert issue: {e}", correlation_id="DB")
         raise DatabaseError(f"Failed to insert issue: {e}") from e
+
+
+# REVIEWS
+def insert_review(
+    run_id: int,
+    review_type: str,
+    fix_confidence: Optional[float] = None,
+    merge_confidence: Optional[float] = None,
+    quality_score: Optional[int] = None,
+    risk_score: Optional[float] = None,
+    overall_risk: Optional[str] = None,
+    data: Optional[Dict[str, Any]] = None
+) -> None:
+    """Insert review (critic/risk/security)."""
+    try:
+        with db_pool.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO reviews (
+                        run_id, review_type, fix_confidence, merge_confidence,
+                        quality_score, risk_score, overall_risk, data
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (run_id, review_type, fix_confidence, merge_confidence, 
+                     quality_score, risk_score, overall_risk, psycopg2.extras.Json(data or {}))
+                )
+                conn.commit()
+                logger.debug(f"Inserted review for run_id {run_id}, type {review_type}", correlation_id="DB")
+                
+    except Exception as e:
+        logger.error(f"Failed to insert review: {e}", correlation_id="DB")
+        raise DatabaseError(f"Failed to insert review: {e}") from e
+
+
+# DECISIONS
+def insert_decision(
+    run_id: int,
+    tool_name: str,
+    action: str,
+    reasoning: str
+) -> None:
+    """Insert decision agent choice."""
+    try:
+        with db_pool.get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO decisions (run_id, tool_name, action, reasoning)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (run_id, tool_name, action, reasoning)
+                )
+                conn.commit()
+                logger.debug(f"Inserted decision for run_id {run_id}, tool {tool_name}", correlation_id="DB")
+                
+    except Exception as e:
+        logger.error(f"Failed to insert decision: {e}", correlation_id="DB")
+        raise DatabaseError(f"Failed to insert decision: {e}") from e
 
 
 # PRs
@@ -236,19 +248,7 @@ def insert_pr(
     status: str = "created",
     merged: bool = False
 ) -> None:
-    """
-    Insert PR metadata.
-    
-    Args:
-        run_id: Run ID
-        branch_name: Git branch name
-        pr_url: Pull request URL
-        status: PR status (created/merged/closed)
-        merged: Whether PR is merged
-        
-    Raises:
-        DatabaseError: If database operation fails
-    """
+    """Insert PR metadata."""
     try:
         with db_pool.get_connection() as conn:
             with conn.cursor() as cur:
@@ -260,11 +260,7 @@ def insert_pr(
                     (run_id, branch_name, pr_url, status, merged)
                 )
                 conn.commit()
-                
-                logger.debug(
-                    f"Inserted PR record for run_id {run_id}, branch {branch_name}",
-                    correlation_id="DB"
-                )
+                logger.debug(f"Inserted PR for run_id {run_id}, branch {branch_name}", correlation_id="DB")
                 
     except Exception as e:
         logger.error(f"Failed to insert PR: {e}", correlation_id="DB")

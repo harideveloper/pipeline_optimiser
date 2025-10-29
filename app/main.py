@@ -94,6 +94,49 @@ async def health_check():
     return {"status": "healthy", "version": app.version}
 
 
+@app.get("/debug/llm")
+async def test_anthropic_connection():
+    """Debug endpoint to test Anthropic API connectivity"""
+    import certifi
+    
+    debug_info = {
+        "ssl_cert_file": os.getenv("SSL_CERT_FILE", "NOT SET"),
+        "requests_ca_bundle": os.getenv("REQUESTS_CA_BUNDLE", "NOT SET"),
+        "certifi_path": certifi.where(),
+        "certifi_exists": os.path.exists(certifi.where()),
+        "is_local": config.IS_LOCAL,
+        "anthropic_key_set": bool(config.ANTHROPIC_API_KEY),
+        "anthropic_key_prefix": config.ANTHROPIC_API_KEY[:7] if config.ANTHROPIC_API_KEY else "NOT SET"
+    }
+    
+    logger.info(f"Debug info: {debug_info}", correlation_id="DEBUG")
+    
+    # Try to make a simple API call
+    try:
+        from app.utils.llm_client import LLMClient
+        client = LLMClient(model="claude-sonnet-4-20250514", temperature=0.0)
+        
+        response = client.chat_completion(
+            system_prompt="You are a helpful assistant.",
+            user_prompt="Say 'Connection successful!' and nothing else.",
+            max_tokens=100
+        )
+        
+        return {
+            "status": "success",
+            "response": response,
+            "debug_info": debug_info
+        }
+    except Exception as e:
+        logger.exception("Anthropic connection test failed", correlation_id="DEBUG")
+        return {
+            "status": "error",
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "debug_info": debug_info
+        }
+
+
 @app.post("/optimise")
 async def optimise_pipeline(request: OptimiseRequest):
     logger.info(

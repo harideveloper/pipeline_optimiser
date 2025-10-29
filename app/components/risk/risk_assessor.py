@@ -214,6 +214,19 @@ class RiskAssessor(BaseService):
                 optimised_yaml=optimised_yaml
             )
             state["risk_assessment"] = assessment
+            
+            # Save to database
+            try:
+                self.repository.save_review(
+                    run_id=state["run_id"],
+                    review_type="risk",
+                    review_data=assessment,
+                    correlation_id=correlation_id
+                )
+                logger.debug(f"Risk assessment saved to database", correlation_id=correlation_id)
+            except Exception as e:
+                logger.warning(f"Failed to save risk assessment to database: {str(e)[:200]}", correlation_id=correlation_id)
+                
         except Exception as e:
             logger.error(f"Risk assessment execution failed: {e}", correlation_id=correlation_id)
             state["risk_assessment"] = {

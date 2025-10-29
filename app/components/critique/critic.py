@@ -101,6 +101,19 @@ class Critic(BaseService):
                 correlation_id=correlation_id
             )
             state["critic_review"] = result
+            
+            # Save to database
+            try:
+                self.repository.save_review(
+                    run_id=state["run_id"],
+                    review_type="critic",
+                    review_data=result,
+                    correlation_id=correlation_id
+                )
+                logger.debug(f"Critic review saved to database", correlation_id=correlation_id)
+            except Exception as e:
+                logger.warning(f"Failed to save critic review to database: {str(e)[:200]}", correlation_id=correlation_id)
+                
         except Exception as e:
             state["critic_review"] = {"error": str(e)}
             logger.error(f"Critic review failed: {str(e)[:200]}", correlation_id=correlation_id)
