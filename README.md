@@ -19,16 +19,23 @@ The system follows a multi-agent architecture where specialised agents collabora
 
 ### Core Components
 
-**Agents:**
+**Agents/Tools:**
 - **Ingestor**: Fetches pipeline YAML and build logs from GitHub
 - **Classifier**: Determines workflow type (CI/CD/Both) and risk level (LOW/MEDIUM/HIGH)
-- **Decision**: Intelligent routing - decides which agents to run based on context
+- **Decision**: LLM based routing, decides which agents to run based on context
 - **Validator**: Validates pipeline syntax and structure (Mode =input/output for pre and post validation)
 - **Optimiser**: Two-stage analysis and LLM bases optimisation
 - **Critic**: Reviews proposed changes for safety and quality
 - **Risk Assessment**: Scores the risk of applying changes
 - **Security Scanner**: Detects security issues in pipelines
 - **Resolver**: Creates GitHub pull requests with optimised YAML
+
+**Plan & Execution Logic:**
+- Classifier classifies the pipeline based on the risk profile
+- Classifier generates execution plan based on the risk profile 
+   Risk Profile = High | Execution : Validate -> Optimise --> Post Validate --> Critic --> Risk Assess --> Security Scan --> Resolve 
+   Risk Profile = Medium | Execution : Validate -> Optimise --> Post Validate --> Critic --> Security Scan --> Resolve 
+   Risk Profile = Low | Execution : Validate -> Optimise --> Post Validate --> Critic --> Resolve 
 
 **Decision Logic:**
 - Validation must pass before optimisation

@@ -1,6 +1,8 @@
 """
-Pipeline Optimiser - Two-stage pipeline optimisation using Claude Sonnet.
+Pipeline Optimiser - Two-stage LLM based pipeline optimisation.
 """
+
+
 
 import json
 import yaml
@@ -22,7 +24,9 @@ logger = get_logger(__name__, "Optimiser")
 
 
 class Optimiser(BaseService):
-    """Pipeline optimiser: Analysis → Execution"""
+    """
+    Pipeline optimiser: Analysis → Execution
+    """
 
     def __init__(self, model: str = None, temperature: float = None, max_tokens: int = None):
         super().__init__(agent_name="optimise")
@@ -35,11 +39,13 @@ class Optimiser(BaseService):
         self.llm_client = LLMClient(model=self.model, temperature=self.temperature)
         
         logger.debug(
-            f"Initialised Optimiser: model={self.model}, temperature={self.temperature}, max_tokens={self.max_tokens}",
+            f"Initialised Optimiser: model={self.model}, "
+            f"temperature={self.temperature}, max_tokens={self.max_tokens}",
             correlation_id="INIT"
         )
 
     def run(self, pipeline_yaml: str, correlation_id: Optional[str] = None) -> Dict[str, Any]:
+        """Run two-stage optimisation"""
         if not pipeline_yaml or not isinstance(pipeline_yaml, str) or not pipeline_yaml.strip():
             logger.error("Invalid or empty pipeline YAML", correlation_id=correlation_id)
             raise OptimiserError("pipeline_yaml must be a non-empty string")
@@ -47,26 +53,44 @@ class Optimiser(BaseService):
         logger.debug("Starting optimiser", correlation_id=correlation_id)
         
         try:
+            # Stage 1: Analysis
             analysis = self._analyse_pipeline(pipeline_yaml, correlation_id)
             issues_count = len(analysis.get("issues", []))
             changes_count = len(analysis.get("recommended_changes", []))
             
-            logger.info(f"Analysis complete: {issues_count} issues, {changes_count} recommendations", correlation_id=correlation_id)
+            logger.info(
+                f"Analysis complete: {issues_count} issues, {changes_count} recommendations",
+                correlation_id=correlation_id
+            )
             
             if issues_count > 0:
-                logger.debug(f"Issues detected: {json.dumps(analysis.get('issues', []), indent=2)}", correlation_id=correlation_id)
+                logger.debug(
+                    f"Issues detected: {json.dumps(analysis.get('issues', []), indent=2)}",
+                    correlation_id=correlation_id
+                )
             
+            # Stage 2: Execution
             execution = self._execute_optimisations(pipeline_yaml, analysis, correlation_id)
             fixes_count = len(execution.get("applied_fixes", []))
             
+            # Validate generated YAML
             self._validate_yaml(execution["optimised_yaml"], correlation_id)
             
             if fixes_count > 0:
-                logger.debug(f"Applied fixes: {json.dumps(execution.get('applied_fixes', []), indent=2)}", correlation_id=correlation_id)
+                logger.debug(
+                    f"Applied fixes: {json.dumps(execution.get('applied_fixes', []), indent=2)}",
+                    correlation_id=correlation_id
+                )
             
-            logger.debug(f"Original YAML:\n{pipeline_yaml}\n\nOptimised YAML:\n{execution['optimised_yaml']}", correlation_id=correlation_id)
+            logger.debug(
+                f"Original YAML:\n{pipeline_yaml}\n\nOptimised YAML:\n{execution['optimised_yaml']}",
+                correlation_id=correlation_id
+            )
             
-            expected_improvement = self._calculate_improvement(analysis.get("issues", []), execution.get("applied_fixes", []))
+            expected_improvement = self._calculate_improvement(
+                analysis.get("issues", []),
+                execution.get("applied_fixes", [])
+            )
             
             result = {
                 "optimised_yaml": execution["optimised_yaml"],
@@ -77,20 +101,33 @@ class Optimiser(BaseService):
                 "is_fixable": len(execution.get("applied_fixes", [])) > 0
             }
             
-            logger.info(f"Execution complete: {fixes_count} fixes applied", correlation_id=correlation_id)
-            logger.info(f"optimisation complete: {issues_count} issues -> {fixes_count} fixes applied", correlation_id=correlation_id)
+            logger.info(
+                f"Execution complete: {fixes_count} fixes applied",
+                correlation_id=correlation_id
+            )
+            logger.info(
+                f"Optimisation complete: {issues_count} issues -> {fixes_count} fixes applied",
+                correlation_id=correlation_id
+            )
             
             return result
             
         except Exception as e:
-            logger.exception(f"optimisation failed: {str(e)[:200]}", correlation_id=correlation_id)
+            logger.exception(
+                f"Optimisation failed: {str(e)[:200]}",
+                correlation_id=correlation_id
+            )
             raise OptimiserError(f"Failed to optimise pipeline: {e}") from e
 
     def _execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute within workflow."""
         correlation_id = state.get("correlation_id")
         
         try:
-            result = self.run(pipeline_yaml=state["pipeline_yaml"], correlation_id=correlation_id)
+            result = self.run(
+                pipeline_yaml=state["pipeline_yaml"],
+                correlation_id=correlation_id
+            )
             
             state["optimised_yaml"] = result["optimised_yaml"]
             state["analysis_result"] = {
@@ -104,58 +141,106 @@ class Optimiser(BaseService):
             if result["issues_detected"]:
                 self._save_issues_to_db(state, result, correlation_id)
             else:
-                logger.info("No issues detected - pipeline is already optimal", correlation_id=correlation_id)
+                logger.info(
+                    "No issues detected - pipeline is already optimal",
+                    correlation_id=correlation_id
+                )
             
         except OptimiserError as e:
             state["error"] = str(e)
-            logger.error(f"optimisation failed: {str(e)[:200]}", correlation_id=correlation_id)
+            logger.error(
+                f"Optimisation failed: {str(e)[:200]}",
+                correlation_id=correlation_id
+            )
         except Exception as e:
             state["error"] = f"Unexpected optimisation error: {e}"
-            logger.exception(f"Unexpected error: {str(e)[:200]}", correlation_id=correlation_id)
+            logger.exception(
+                f"Unexpected error: {str(e)[:200]}",
+                correlation_id=correlation_id
+            )
         
         return state
 
-    def _analyse_pipeline(self, pipeline_yaml: str, correlation_id: Optional[str] = None) -> Dict[str, Any]:
+    def _analyse_pipeline(
+        self, 
+        pipeline_yaml: str, 
+        correlation_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Analyse pipeline using LLM
+        """
         user_prompt = build_analysis_user_prompt(pipeline_yaml)
         
         try:
-            raw_result = self._call_llm(system_prompt=OPTIMISER_ANALYSE_SYSTEM_PROMPT, user_prompt=user_prompt, correlation_id=correlation_id)
+            raw_result = self._call_llm(
+                system_prompt=OPTIMISER_ANALYSE_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                correlation_id=correlation_id
+            )
+            
             analysis = self.llm_client.parse_json_response(raw_result, correlation_id)
             
             if "issues" not in analysis or "recommended_changes" not in analysis:
-                raise OptimiserError("Analysis response missing required fields (issues or recommended_changes)")
+                raise OptimiserError(
+                    "Analysis response missing required fields (issues or recommended_changes)"
+                )
             
             return analysis
         except Exception as e:
             raise OptimiserError(f"Analysis stage failed: {e}") from e
 
-    def _execute_optimisations(self, pipeline_yaml: str, analysis: Dict[str, Any], correlation_id: Optional[str] = None) -> Dict[str, Any]:
+    def _execute_optimisations(
+        self, 
+        pipeline_yaml: str, 
+        analysis: Dict[str, Any], 
+        correlation_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Execute optimisations using custom XML parser for YAML output."""
         user_prompt = build_execution_user_prompt(pipeline_yaml, analysis)
+        
         try:
-            raw_result = self._call_llm(system_prompt=OPTIMISER_EXECUTION_SYSTEM_PROMPT, user_prompt=user_prompt, correlation_id=correlation_id)
-            # execution = self.llm_client.parse_json_response(raw_result, correlation_id)
+            raw_result = self._call_llm(
+                system_prompt=OPTIMISER_EXECUTION_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                correlation_id=correlation_id
+            )
+            
             execution = self.llm_client.parse_optimiser_response(raw_result, correlation_id)
             
             if "optimised_yaml" not in execution:
                 raise OptimiserError("Execution response missing optimised_yaml")
             
             if "applied_fixes" not in execution:
-                logger.warning("Execution response missing applied_fixes field", correlation_id=correlation_id)
+                logger.warning(
+                    "Execution response missing applied_fixes field",
+                    correlation_id=correlation_id
+                )
                 execution["applied_fixes"] = []
             
             return execution
         except Exception as e:
             raise OptimiserError(f"Execution stage failed: {e}") from e
 
-    def _call_llm(self, system_prompt: str, user_prompt: str, correlation_id: Optional[str] = None) -> str:
-        return self.llm_client.chat_completion(system_prompt=system_prompt, user_prompt=user_prompt, max_tokens=self.max_tokens)
+    def _call_llm(
+        self, 
+        system_prompt: str, 
+        user_prompt: str, 
+        correlation_id: Optional[str] = None
+    ) -> str:
+        """Call LLM using regular chat completion (no structured output)."""
+        return self.llm_client.chat_completion(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=self.max_tokens
+        )
 
     def _validate_yaml(self, yaml_content: str, correlation_id: Optional[str] = None) -> None:
+        """Validate optimised YAML."""
         try:
             parsed_yaml = yaml.safe_load(yaml_content)
         except yaml.YAMLError as e:
-            logger.error(f"optimised YAML is invalid: {e}", correlation_id=correlation_id)
-            raise OptimiserError(f"optimised YAML is invalid: {e}") from e
+            logger.error(f"Optimised YAML is invalid: {e}", correlation_id=correlation_id)
+            raise OptimiserError(f"Optimised YAML is invalid: {e}") from e
         
         required_top_level = {
             "name": ["name"],
@@ -165,12 +250,19 @@ class Optimiser(BaseService):
         
         for key_name, acceptable_keys in required_top_level.items():
             if not any(k in parsed_yaml for k in acceptable_keys):
-                raise OptimiserError(f"optimised YAML missing required top-level key: '{key_name}'")
+                raise OptimiserError(
+                    f"Optimised YAML missing required top-level key: '{key_name}'"
+                )
         
         if not parsed_yaml.get("jobs"):
-            raise OptimiserError("optimised YAML has no jobs defined")
+            raise OptimiserError("Optimised YAML has no jobs defined")
 
-    def _calculate_improvement(self, issues: List[Dict[str, Any]], applied_fixes: List[Dict[str, Any]]) -> Dict[str, str]:
+    def _calculate_improvement(
+        self, 
+        issues: List[Dict[str, Any]], 
+        applied_fixes: List[Dict[str, Any]]
+    ) -> Dict[str, str]:
+        """Calculate expected improvement."""
         time_saved = "0 minutes per run"
         cost = "None"
         
@@ -204,7 +296,13 @@ class Optimiser(BaseService):
             "summary": ", ".join(summary_parts) + "."
         }
 
-    def _save_issues_to_db(self, state: Dict[str, Any], result: Dict[str, Any], correlation_id: Optional[str] = None) -> None:
+    def _save_issues_to_db(
+        self, 
+        state: Dict[str, Any], 
+        result: Dict[str, Any], 
+        correlation_id: Optional[str] = None
+    ) -> None:
+        """Save issues to database."""
         issues_detected = result.get("issues_detected", [])
         applied_fixes = result.get("applied_fixes", [])
         
@@ -225,10 +323,20 @@ class Optimiser(BaseService):
             })
         
         try:
-            self.repository.save_issues(run_id=state["run_id"], issues=issues, correlation_id=correlation_id)
-            logger.debug(f"Stored {len(issues)} issues in database", correlation_id=correlation_id)
+            self.repository.save_issues(
+                run_id=state["run_id"],
+                issues=issues,
+                correlation_id=correlation_id
+            )
+            logger.debug(
+                f"Stored {len(issues)} issues in database",
+                correlation_id=correlation_id
+            )
         except Exception as e:
-            logger.warning(f"Failed to store issues in database: {str(e)[:200]}", correlation_id=correlation_id)
+            logger.warning(
+                f"Failed to store issues in database: {str(e)[:200]}",
+                correlation_id=correlation_id
+            )
 
     def _get_artifact_key(self) -> Optional[str]:
         return "optimised_yaml"

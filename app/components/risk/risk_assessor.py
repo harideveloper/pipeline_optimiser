@@ -27,7 +27,10 @@ class RiskAssessor(BaseService):
         
         self.llm_client = LLMClient(model=self.model, temperature=self.temperature)
         
-        logger.debug(f"Initialised Risk Assessor: model={self.model}, temperature={self.temperature}", correlation_id="INIT")
+        logger.debug(
+            f"Initialised Risk Assessor: model={self.model}, temperature={self.temperature}",
+            correlation_id="INIT"
+        )
 
     def run(
         self, 
@@ -50,7 +53,10 @@ class RiskAssessor(BaseService):
                 "analysis": "No optimisations were applied, so there is no risk from changes."
             }
         
-        logger.debug(f"Assessing risk for {len(applied_fixes)} applied changes", correlation_id=correlation_id)
+        logger.debug(
+            f"Assessing risk for {len(applied_fixes)} applied changes",
+            correlation_id=correlation_id
+        )
         
         try:
             heuristic_score = self._calculate_heuristic_risk(issues_detected, applied_fixes)
@@ -70,7 +76,12 @@ class RiskAssessor(BaseService):
             )
             
             assessment = self.llm_client.parse_json_response(raw_response, correlation_id)
-            assessment = self._validate_and_enhance_assessment(assessment, heuristic_score, applied_fixes, correlation_id)
+            assessment = self._validate_and_enhance_assessment(
+                assessment,
+                heuristic_score,
+                applied_fixes,
+                correlation_id
+            )
             
             logger.info(
                 f"Risk assessment complete: {assessment['overall_risk'].upper()} risk "
@@ -88,7 +99,11 @@ class RiskAssessor(BaseService):
             logger.error(error_msg, correlation_id=correlation_id)
             raise RiskAssessorError(error_msg)
 
-    def _calculate_heuristic_risk(self, issues: List[Dict[str, Any]], fixes: List[Dict[str, Any]]) -> float:
+    def _calculate_heuristic_risk(
+        self, 
+        issues: List[Dict[str, Any]], 
+        fixes: List[Dict[str, Any]]
+    ) -> float:
         """Calculate initial risk score using heuristics."""
         score = 0.0
         
@@ -144,21 +159,31 @@ class RiskAssessor(BaseService):
         
         valid_levels = ["low", "medium", "high"]
         if validated["overall_risk"] not in valid_levels:
-            logger.warning(f"Invalid risk level '{validated['overall_risk']}', defaulting to 'medium'", correlation_id=correlation_id)
+            logger.warning(
+                f"Invalid risk level '{validated['overall_risk']}', defaulting to 'medium'",
+                correlation_id=correlation_id
+            )
             validated["overall_risk"] = "medium"
         
         try:
             risk_score = float(validated["risk_score"])
             validated["risk_score"] = max(0, min(10, risk_score))
         except (ValueError, TypeError):
-            logger.warning(f"Invalid risk score '{validated['risk_score']}', using heuristic: {heuristic_score}", correlation_id=correlation_id)
+            logger.warning(
+                f"Invalid risk score '{validated['risk_score']}', using heuristic: {heuristic_score}",
+                correlation_id=correlation_id
+            )
             validated["risk_score"] = heuristic_score
         
         score = validated["risk_score"]
         expected_level = "low" if score < 4 else "medium" if score < 7 else "high"
         
         if validated["overall_risk"] != expected_level:
-            logger.debug(f"Adjusting risk level from {validated['overall_risk']} to {expected_level} to match score {score}", correlation_id=correlation_id)
+            logger.debug(
+                f"Adjusting risk level from {validated['overall_risk']} to {expected_level} "
+                f"to match score {score}",
+                correlation_id=correlation_id
+            )
             validated["overall_risk"] = expected_level
         
         if not isinstance(validated["risks"], list):
@@ -182,11 +207,17 @@ class RiskAssessor(BaseService):
         optimisation_result = state.get("optimisation_result", {})
         
         if not optimisation_result:
-            logger.warning("No optimisation results found in state - checking analysis_result", correlation_id=correlation_id)
+            logger.warning(
+                "No optimisation results found in state - checking analysis_result",
+                correlation_id=correlation_id
+            )
             
             analysis_result = state.get("analysis_result", {})
             if not analysis_result:
-                logger.warning("No optimisation or analysis results to assess", correlation_id=correlation_id)
+                logger.warning(
+                    "No optimisation or analysis results to assess",
+                    correlation_id=correlation_id
+                )
                 state["risk_assessment"] = {
                     "overall_risk": "low",
                     "risk_score": 0,
@@ -223,16 +254,29 @@ class RiskAssessor(BaseService):
                     review_data=assessment,
                     correlation_id=correlation_id
                 )
-                logger.debug(f"Risk assessment saved to database", correlation_id=correlation_id)
+                logger.debug("Risk assessment saved to database", correlation_id=correlation_id)
             except Exception as e:
-                logger.warning(f"Failed to save risk assessment to database: {str(e)[:200]}", correlation_id=correlation_id)
+                logger.warning(
+                    f"Failed to save risk assessment to database: {str(e)[:200]}",
+                    correlation_id=correlation_id
+                )
                 
         except Exception as e:
-            logger.error(f"Risk assessment execution failed: {e}", correlation_id=correlation_id)
+            logger.error(
+                f"Risk assessment execution failed: {e}",
+                correlation_id=correlation_id
+            )
             state["risk_assessment"] = {
                 "overall_risk": "medium",
                 "risk_score": 5,
-                "risks": [{"category": "error", "description": str(e), "severity": "medium"}],
+                "risks": [
+                    {
+                        "category": "error",
+                        "description": str(e),
+                        "severity": "medium",
+                        "mitigation": "Review logs and retry assessment"
+                    }
+                ],
                 "recommendations": [
                     "Risk assessment failed - proceed with caution",
                     "Manually review all changes before deployment"

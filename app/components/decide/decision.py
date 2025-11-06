@@ -17,7 +17,7 @@ logger = get_logger(__name__, "Decision")
 
 
 class Decision(BaseService):
-    """Decision service that decides whether to run or skip tools."""
+    """LLM based Decision service that decides whether to run or skip tools."""
 
     def __init__(self, model: str = None, temperature: float = None, max_tokens: int = None):
         super().__init__(agent_name="decide")
@@ -31,13 +31,15 @@ class Decision(BaseService):
         self.repository = PipelineRepository()
         
         logger.debug(
-            f"Initialised Decision agent: model={self.model}, temperature={self.temperature}, max_tokens={self.max_tokens}",
+            f"Initialised Decision agent: model={self.model}, "
+            f"temperature={self.temperature}, max_tokens={self.max_tokens}",
             correlation_id="INIT"
         )
 
     def run(self, state: Dict[str, Any], next_tool: str) -> Dict[str, str]:
-        correlation_id = state.get("correlation_id")
-        logger.debug(f"Making decision for: {next_tool}", correlation_id=correlation_id)
+        """Make decision for next tool."""
+        cid = state.get("correlation_id")
+        logger.debug(f"Making decision for: {next_tool}", correlation_id=cid)
         
         try:
             context = build_decision_context(state, next_tool)
@@ -46,7 +48,7 @@ class Decision(BaseService):
                 user_prompt=context,
                 max_tokens=self.max_tokens
             )
-            decision = self.llm_client.parse_json_response(raw_response, correlation_id)
+            decision = self.llm_client.parse_json_response(raw_response, cid)
             
             action = decision.get("action", ACTION_RUN)
             reasoning = decision.get("reasoning", "No reasoning provided")
@@ -54,31 +56,35 @@ class Decision(BaseService):
             if action not in [ACTION_RUN, ACTION_SKIP]:
                 logger.warning(
                     f"Invalid action '{action}' received, defaulting to '{ACTION_RUN}'",
-                    correlation_id=correlation_id
+                    correlation_id=cid
                 )
                 action = ACTION_RUN
             
             logger.debug(
                 f"Decision: {action} {next_tool} | Reasoning: {reasoning}",
-                correlation_id=correlation_id
+                correlation_id=cid
             )
             
             return {"action": action, "reasoning": reasoning}
             
         except DecisionError as e:
-            logger.error(f"Decision error for {next_tool}: {e}", correlation_id=correlation_id)
+            logger.error(f"Decision error for {next_tool}: {e}", correlation_id=cid)
             raise
         except Exception as e:
-            logger.error(f"Decision failed for {next_tool}: {e}", correlation_id=correlation_id)
+            logger.error(f"Decision failed for {next_tool}: {e}", correlation_id=cid)
             return {"action": ACTION_SKIP, "reasoning": f"Error making decision: {e}"}
 
     def _execute(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute decision within workflow."""
         next_tool = state.get("_current_tool")
         correlation_id = state.get("correlation_id")
         run_id = state.get("run_id")
 
         if not next_tool:
-            logger.warning("No current tool specified for decision", correlation_id=correlation_id)
+            logger.warning(
+                "No current tool specified for decision",
+                correlation_id=correlation_id
+            )
             state["next_action"] = ACTION_SKIP
             state["agent_reasoning"] = "No tool specified"
             return state
@@ -98,13 +104,20 @@ class Decision(BaseService):
                     correlation_id=correlation_id
                 )
                 logger.info(
-                    f"Decision persisted: run_id={run_id}, tool={next_tool}, action={decision['action']}",
+                    f"Decision persisted: run_id={run_id}, tool={next_tool}, "
+                    f"action={decision['action']}",
                     correlation_id=correlation_id
                 )
             except Exception as e:
-                logger.warning(f"Failed to save decision: {e}", correlation_id=correlation_id)
+                logger.warning(
+                    f"Failed to save decision: {e}",
+                    correlation_id=correlation_id
+                )
         else:
-            logger.warning("run_id missing; decision not saved to DB", correlation_id=correlation_id)
+            logger.warning(
+                "run_id missing; decision not saved to DB",
+                correlation_id=correlation_id
+            )
 
         return state
 

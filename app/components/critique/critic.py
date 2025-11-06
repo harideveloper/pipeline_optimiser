@@ -34,7 +34,7 @@ class Critic(BaseService):
         
         self.llm_client = LLMClient(model=self.model, temperature=self.temperature)
         
-        logger.debug(f"Initialised Critic with model={self.model}", correlation_id="INIT")
+        logger.debug(f"Initialized Critic with model={self.model}", correlation_id="INIT")
 
     def run(
         self,
@@ -44,7 +44,7 @@ class Critic(BaseService):
         applied_fixes: List[Dict[str, Any]],
         correlation_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Perform confidence evaluation using Claude Sonnet."""
+        """Perform llm based confidence evaluation"""
         if not optimised_yaml:
             raise CriticError("optimised_yaml must be a non-empty string")
 
@@ -74,7 +74,10 @@ class Critic(BaseService):
             return review
 
         except Exception as e:
-            logger.exception(f"Critic review failed unexpectedly: {str(e)[:200]}", correlation_id=correlation_id)
+            logger.exception(
+                f"Critic review failed unexpectedly: {str(e)[:200]}",
+                correlation_id=correlation_id
+            )
             raise CriticError(f"Critic review failed: {e}") from e
 
     def _compute_confidence_score(self, review: Dict[str, Any]) -> Dict[str, Any]:
@@ -84,7 +87,11 @@ class Critic(BaseService):
 
         regressions = len(review.get("regressions", []))
         unresolved = len(review.get("unresolved_issues", []))
-        merge_score = review["fix_confidence"] - self.regression_penalty * regressions - self.unresolved_penalty * unresolved
+        merge_score = (
+            review["fix_confidence"] 
+            - self.regression_penalty * regressions 
+            - self.unresolved_penalty * unresolved
+        )
         review["merge_confidence"] = max(0.0, min(merge_score, 1.0))
 
         return review
@@ -110,13 +117,19 @@ class Critic(BaseService):
                     review_data=result,
                     correlation_id=correlation_id
                 )
-                logger.debug(f"Critic review saved to database", correlation_id=correlation_id)
+                logger.debug("Critic review saved to database", correlation_id=correlation_id)
             except Exception as e:
-                logger.warning(f"Failed to save critic review to database: {str(e)[:200]}", correlation_id=correlation_id)
+                logger.warning(
+                    f"Failed to save critic review to database: {str(e)[:200]}",
+                    correlation_id=correlation_id
+                )
                 
         except Exception as e:
             state["critic_review"] = {"error": str(e)}
-            logger.error(f"Critic review failed: {str(e)[:200]}", correlation_id=correlation_id)
+            logger.error(
+                f"Critic review failed: {str(e)[:200]}",
+                correlation_id=correlation_id
+            )
         return state
 
     def _get_artifact_key(self) -> Optional[str]:
