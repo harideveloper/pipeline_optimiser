@@ -33,7 +33,7 @@ class BaseService(ABC):
 
     def __init__(self, agent_name: str):
         """
-        Initialize service.
+        Initialise service.
         
         Args:
             agent_name: Service identifier (e.g., "ingest", "analyze")

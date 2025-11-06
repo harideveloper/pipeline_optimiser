@@ -28,7 +28,7 @@ class SecurityScanner(BaseService):
     CRITICAL_VULNERABILITIES = ["secrets_exposed"]
 
     def __init__(self):
-        """Initialize SecurityScanner with security check registry."""
+        """Initialise SecurityScanner with security check registry."""
         super().__init__(agent_name="security_scan")
         
         # Registry of security checks

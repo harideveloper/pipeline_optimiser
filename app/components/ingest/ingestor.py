@@ -19,9 +19,9 @@ class Ingestor(BaseService):
     """ Ingests a GitHub repository to retrieve the pipeline YAML and optional build log."""
 
     def __init__(self):
-        """Initialize Ingestor."""
+        """Initialise Ingestor."""
         super().__init__(agent_name="ingest")
-        logger.debug("Initialized Ingestor", correlation_id="INIT")
+        logger.debug("Initialised Ingestor", correlation_id="INIT")
 
     def run(
         self,
@@ -55,7 +55,7 @@ class Ingestor(BaseService):
             raise IngestionError("pipeline_path_in_repo must be a non-empty string")
         
         logger.debug(
-            f"Cloning repo: {self._sanitize_url(repo_url)} (branch={branch}, file={pipeline_path_in_repo})",
+            f"Cloning repo: {self._sanitise_url(repo_url)} (branch={branch}, file={pipeline_path_in_repo})",
             correlation_id=correlation_id
         )
 
@@ -255,7 +255,7 @@ class Ingestor(BaseService):
             )
             return None
 
-    def _sanitize_url(self, url: str) -> str:
+    def _sanitise_url(self, url: str) -> str:
         """
         Remove credentials from URL for safe logging.
         
@@ -263,7 +263,7 @@ class Ingestor(BaseService):
             url: Git repository URL (may contain credentials)
             
         Returns:
-            Sanitized URL with credentials masked
+            Sanitised URL with credentials masked
         """
         if "@" in url and "://" in url:
             protocol = url.split("://")[0]

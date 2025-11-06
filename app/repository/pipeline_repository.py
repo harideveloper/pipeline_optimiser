@@ -20,7 +20,7 @@ class PipelineRepository:
     def __init__(self):
         """Initialise repository with database connection."""
         self.db = db
-        logger.debug("Initialized PipelineRepository", correlation_id="INIT")
+        logger.debug("Initialised PipelineRepository", correlation_id="INIT")
 
     def start_run(
         self,
@@ -34,7 +34,7 @@ class PipelineRepository:
         risk_level: Optional[str] = None
     ) -> int:
         """
-        Creates repository record if needed and initializes run.
+        Creates repository record if needed and initialises run.
         
         Args:
             repo_url: GitHub repository URL

@@ -1,206 +1,159 @@
 # Pipeline Optimiser
 
+An AI-powered CI/CD pipeline optimisation system that automatically analyses GitHub Actions workflows, identifies performance bottlenecks, and generates optimised configurations.
+
 ## Overview
 
-The Pipeline Optimiser automates CI/CD pipeline improvements by ingesting pipeline YAMLs, validating them, analyzing for inefficiencies, applying fixes, and optionally raising pull requests. All stages log artifacts and results in a PostgreSQL database to support historical tracking, caching, and quality improvements.
+Pipeline Optimiser uses Claude AI to intelligently analyse your CI/CD pipelines and suggest improvements for:
+- Missing dependency caching (npm, pip, Maven, Docker layers)
+- Parallelisation opportunities (removing unnecessary job dependencies)
+- Redundant steps and inefficient configurations
+- Security vulnerabilities
 
----
+The system follows a multi-agent architecture where specialised agents collaborate to analyse, optimise, review, and optionally create pull requests with fixes.
 
-## 1. High-Level Flow
+## Architecture
 
-## Flow Diagram
+### Agent Pipeline
+     TBU 
 
-HTTP Request → Orchestrator
-     │
-     ├─> DB: repositories (get_or_create_repo)
-     ├─> DB: runs (insert_run)
-     │
-     ├─> IngestorAgent → artifacts(stage='ingestor')
-     ├─> ValidatorAgent → artifacts(stage='validator')
-     ├─> AnalyserAgent → artifacts(stage='analyzer') + issues
-     ├─> FixerAgent → artifacts(stage='fixer')
-     ├─> PRHandlerAgent → artifacts(stage='pr_handler') + prs
-     │
-     └─> Orchestrator → runs (update_run_status)
+### Core Components
 
+**Agents:**
+- **Ingestor**: Fetches pipeline YAML and build logs from GitHub
+- **Classifier**: Determines workflow type (CI/CD/Both) and risk level (LOW/MEDIUM/HIGH)
+- **Decision**: Intelligent routing - decides which agents to run based on context
+- **Validator**: Validates pipeline syntax and structure (Mode =input/output for pre and post validation)
+- **Optimiser**: Two-stage analysis and LLM bases optimisation
+- **Critic**: Reviews proposed changes for safety and quality
+- **Risk Assessment**: Scores the risk of applying changes
+- **Security Scanner**: Detects security issues in pipelines
+- **Resolver**: Creates GitHub pull requests with optimised YAML
 
+**Decision Logic:**
+- Validation must pass before optimisation
+- Critic only runs if optimised YAML exists
+- Risk assessment skipped for LOW risk workflows
+- PR creation requires critic confidence >= 0.5
 
-- Each agent performs its task and writes relevant outputs to the database.  
-- Historical runs are stored for auditing, caching, and ML/LLM-based quality improvements.  
+## Database Design
 
----
+### Schema Overview
 
-##  Database Design
+**Core Tables:**
+- `repositories`: Repository metadata and tracking
+- `runs`: Optimisation execution records with correlation IDs
+- `issues`: Detected pipeline problems (type, severity, location, fix)
+- `decisions`: Agent execution decisions (which tools ran and why)
+- `reviews`: Critic, risk, and security assessment results
+- `artifacts`: Generated YAML and intermediate analysis data
+- `prs`: Pull request tracking (URL, status, merge state)
 
-We store data across **5 core tables**:
-
-| Table        | Purpose                                         | Key Fields |
-|-------------|-------------------------------------------------|------------|
-| repositories | Metadata about connected repos               | id, repo_url, default_branch, active |
-| runs        | One end-to-end optimisation run               | id, repo_id, start_time, end_time, status, trigger_source, commit_sha |
-| artifacts   | Inputs & outputs from each stage (YAMLs, logs, analysis, fixes) | id, run_id, stage, content, metadata (JSONB) |
-| issues      | Issues found during analysis                  | id, run_id, type, description, severity, suggested_fix |
-| prs         | Info about PRs created                        | id, run_id, branch_name, pr_url, status, merged |
-
----
-
-### Table Details
-
-**repositories**
-```sql
-id SERIAL PRIMARY KEY
-repo_url TEXT UNIQUE NOT NULL
-default_branch TEXT DEFAULT 'main'
-active BOOLEAN DEFAULT TRUE
-created_at TIMESTAMP DEFAULT NOW()
-updated_at TIMESTAMP DEFAULT NOW()
+**Relationships:**
+```
+repositories (1) ──> (N) runs
+runs (1) ──> (N) issues
+runs (1) ──> (N) decisions
+runs (1) ──> (N) reviews
+runs (1) ──> (N) artifacts
+runs (1) ──> (1) prs
 ```
 
+See `app/repository/sql/create.sql` for complete schema definition.
 
-**runs**
-```sql
-id SERIAL PRIMARY KEY
-repo_id INT REFERENCES repositories(id)
-commit_sha TEXT
-trigger_source TEXT  -- e.g. "API", "Webhook", "Schedule"
-status TEXT CHECK (status IN ('started', 'completed', 'failed'))
-start_time TIMESTAMP DEFAULT NOW()
-end_time TIMESTAMP
+## Setup
+
+### Prerequisites
+
+- Python 3.11+
+- PostgreSQL 14+
+- Anthropic API key
+- GitHub Personal Access Token
+- Make
+
+### Installation
+
+1. **Clone and configure:**
+```bash
+git clone https://github.com/yourusername/pipeline-optimiser.git
+cd pipeline-optimiser
+cp .env-example .env
+# Edit .env with your API keys
 ```
 
-**artifacts**
-```sql
-id SERIAL PRIMARY KEY
-run_id INT REFERENCES runs(id)
-stage TEXT  -- e.g. "ingestor", "validator", "analyzer", "fixer", "pr_handler"
-content TEXT  -- YAML, JSON, or text
-metadata JSONB
-created_at TIMESTAMP DEFAULT NOW()
+2. **Setup everything using Make:**
+```bash
+# Install dependencies and setup database
+make setup
 
+# Start the API server
+make run
 
-```
-**issues**
-```sql
-id SERIAL PRIMARY KEY
-run_id INT REFERENCES runs(id)
-type TEXT
-description TEXT
-severity TEXT CHECK (severity IN ('low', 'medium', 'high'))
-suggested_fix TEXT
-created_at TIMESTAMP DEFAULT NOW()
+# Run unit tests
+make test-all
+make test-components
 
-
+# Run sample tests (actual llm call)
+# Edit the app/tests/pipeline_test.py with your test repo, pipeline_path, run the below make command to test few sample request making actual llm call
+make optimise
 ```
 
-**prs**
-```sql
-id SERIAL PRIMARY KEY
-run_id INT REFERENCES runs(id)
-branch_name TEXT
-pr_url TEXT
-status TEXT CHECK (status IN ('created', 'merged', 'closed'))
-merged BOOLEAN DEFAULT FALSE
-created_at TIMESTAMP DEFAULT NOW()
+## Design Patterns
 
-```
+### Application Design Patterns
+
+#### Repository Pattern
+Database operations abstracted through `PipelineRepository` class, separating business logic from data persistence. Makes testing easier and allows database changes without affecting agents.
+
+**Benefit:** Clean separation of concerns and database implementation can change without affecting business logic.
+
+#### Singleton Pattern
+Database connection pool implemented as singleton to reuse connections efficiently and prevent connection exhaustion.
+
+**Benefit:** Efficient connection reuse and prevents resource exhaustion with centralized pool management.
+
+#### Facade Pattern
+`LLMClient` provides simplified interface to Anthropic API, hiding complexity and centralising error handling. Makes it easy to swap LLM providers.
+
+**Benefit:** Simple interface for agents with centralized error handling and easy provider switching.
+
+#### Template Pattern
+`BaseService` base class defines common execution flow (logging, error handling), while subclasses implement specific `_execute()` logic. Ensures consistent behavior across agents.
+
+**Benefit:** Consistent execution flow and reusable logging/error handling across all agents.
+
+#### Dependency Injection
+Services receive dependencies (LLMClient, Repository) through constructor injection, enabling loose coupling and easy testing with mocks.
+
+**Benefit:** Loose coupling enables easy testing with mocks and configurable behavior.
+
+#### Observer Pattern
+Correlation IDs propagate through all components for distributed tracing. Every log and database operation includes correlation_id for end-to-end request tracking.
+
+**Benefit:** End-to-end request tracking across all components for easier debugging and audit trails.
 
 
-API Request → Initialize State
-     ↓
-┌─────────────────────────────────────────────┐
-│ CLASSIFY NODE (New!)                        │
-│                                             │
-│ 1. Detect workflow type:                   │
-│    - CI workflow (triggers: push, PR)       │
-│    - CD workflow (triggers: push to main)   │
-│    - Release workflow (triggers: tag)       │
-│    - Scheduled workflow                     │
-│                                             │
-│ 2. Detect change scope:                    │
-│    - Docs-only                              │
-│    - Code changes                           │
-│    - Infrastructure changes                 │
-│    - Deployment changes                     │
-│                                             │
-│ 3. Calculate risk level:                   │
-│    - LOW: docs, comments, readme            │
-│    - MEDIUM: code, tests                    │
-│    - HIGH: deployment, secrets, infra       │
-│                                             │
-│ 4. Create execution strategy:              │
-│    - Mandatory tools: [ingest, validate]    │
-│    - Optional tools: [risk, security]       │
-│    - Recommended tools: [analyze, fix]      │
-│                                             │
-│ Output: workflow_profile                    │
-└─────────────────────────────────────────────┘
-     ↓
-┌─────────────────────────────────────────────┐
-│ THINK NODE (Enhanced Reasoning)             │
-│                                             │
-│ LLM receives:                               │
-│ - Current state                             │
-│ - Workflow profile (type, risk, strategy)   │
-│ - Action history                            │
-│ - Available tools                           │
-│ - Mandatory vs optional distinction         │
-│                                             │
-│ LLM decides:                                │
-│ - Next action (from available tools)        │
-│ - Why? (reasoning)                          │
-│ - Confidence (0-1)                          │
-│ - What to skip and why                      │
-│                                             │
-│ Output: decision                            │
-└─────────────────────────────────────────────┘
-     ↓
-┌─────────────────────────────────────────────┐
-│ SAFETY GATE (Validation Layer)              │
-│                                             │
-│ Check if decision is safe:                  │
-│                                             │
-│ Block if:                                   │
-│ - Skipping security_scan on HIGH risk       │
-│ - Skipping validate before fix              │
-│ - Creating PR without any validation        │
-│                                             │
-│ Allow if:                                   │
-│ - Skipping security on LOW risk             │
-│ - Skipping risk_assessment on docs-only     │
-│ - Completing early if no fixes needed       │
-│                                             │
-│ Override decision if unsafe                 │
-│ Output: validated_decision                  │
-└─────────────────────────────────────────────┘
-     ↓
-┌─────────────────────────────────────────────┐
-│ ACT NODE (Execute Tool)                     │
-│                                             │
-│ Execute the chosen tool                     │
-│ Track execution time, result, output        │
-│                                             │
-│ Output: action_result                       │
-└─────────────────────────────────────────────┘
-     ↓
-┌─────────────────────────────────────────────┐
-│ OBSERVE NODE (Process Results)              │
-│                                             │
-│ Create observation from result:             │
-│ - Success/failure                           │
-│ - Key findings                              │
-│ - Impact on next steps                      │
-│                                             │
-│ Update state:                               │
-│ - Add to action_history                     │
-│ - Update artifacts                          │
-│ - Add observation to context                │
-│                                             │
-│ Check completion:                           │
-│ - All mandatory tools done?                 │
-│ - Ready to complete?                        │
-│                                             │
-│ Output: updated_state                       │
-└─────────────────────────────────────────────┘
-     ↓
-  If not complete → Back to THINK
-  If complete → END
+### Agent Design Patterns
+
+#### Plan/Execute Pattern
+Agent pipeline where each component processes the request and passes to the next. Decision agent dynamically routes based on context (`Ingestor → Classifier → Decision → Validator → Optimiser → Critic → Resolver`).
+
+**Benefit:** Loose coupling between agents with dynamic execution flow based on rules.
+
+#### Two-Phase Commit
+Optimiser uses two stages: Analysis phase (identify issues) followed by Execution phase (apply fixes). Enables better error handling and rollback capabilities.
+
+**Benefit:** Clear separation between analysis and modification with better error handling and rollback support.
+
+#### Critic Pattern
+Critic agent reviews Optimiser's generated YAML for safety, quality, and correctness before allowing PR creation. Acts as a quality gate with confidence scoring.
+
+**Benefit:** Prevents unsafe changes from being applied and provides confidence scoring for automated decision-making.
+
+## License
+
+This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.
+
+## Acknowledgments
+
+**Questions or Issues?** Open an issue on GitHub.

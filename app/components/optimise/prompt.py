@@ -1,3 +1,4 @@
+
 import json
 from typing import Dict, Any
 
@@ -5,7 +6,7 @@ from typing import Dict, Any
 OPTIMISER_ANALYSE_SYSTEM_PROMPT = """You are a CI/CD pipeline optimisation expert. Analyze this GitHub Actions workflow and create a detailed optimisation plan.
   Identify issues in these categories:
   1. **Caching**: Missing dependency caching (npm, pip, etc.)
-  2. **Parallelization**: Jobs that could run in parallel but have unnecessary dependencies
+  2. **Parallelisation**: Jobs that could run in parallel but have unnecessary dependencies
   3. **Redundant Steps**: Unnecessary or duplicate steps
   4. **Resource Efficiency**: Inefficient configurations
 
@@ -16,12 +17,12 @@ OPTIMISER_ANALYSE_SYSTEM_PROMPT = """You are a CI/CD pipeline optimisation exper
   - ONLY suggest removing dependencies when jobs are truly independent and can safely run in parallel
   - When in doubt, DO NOT remove the dependency
 
-  **Safe to parallelize:**
+  **Safe to parallelise:**
   - Independent test suites (unit tests, integration tests, linting) that don't depend on each other
   - Multiple build jobs for different platforms/environments
   - Documentation generation and code quality checks
 
-  **NEVER parallelize:**
+  **NEVER parallelise:**
   - Build -> Deploy
   - Test -> Deploy
   - Build -> Release
@@ -31,7 +32,7 @@ OPTIMISER_ANALYSE_SYSTEM_PROMPT = """You are a CI/CD pipeline optimisation exper
   {
     "issues": [
       {
-        "type": "caching|parallelization|redundant|other",
+        "type": "caching|parallelisation|redundant|other",
         "severity": "high|medium|low",
         "description": "clear description of the issue",
         "location": "job_name or job_name.step_index"
@@ -51,7 +52,7 @@ OPTIMISER_ANALYSE_SYSTEM_PROMPT = """You are a CI/CD pipeline optimisation exper
   **CRITICAL: Return ONLY valid JSON. Do NOT include code examples, YAML snippets, or multi-line strings in the JSON.**
 
   Be specific and actionable. Only recommend changes you're confident will improve the pipeline WITHOUT breaking correctness.
-  Prioritize caching improvements over dependency removal.
+  Prioritise caching improvements over dependency removal.
 """
 
 
@@ -84,9 +85,23 @@ OPTIMISER_EXECUTION_SYSTEM_PROMPT = """You are implementing an optimisation plan
   - For multiple locations, use explicit patterns: "requirements.txt" or "*/requirements.txt"
   - Verify cache key patterns will actually match the files
 
-  Return a JSON object:
+  **CRITICAL OUTPUT FORMAT:**
+  You MUST format your response exactly as shown below, using XML-style tags to separate the YAML from metadata.
+  This format is REQUIRED because embedding large YAML in JSON causes parsing errors.
+
+  <optimised_yaml>
+  # Place the complete optimised YAML here
+  # Do not escape or modify the YAML - just paste it directly
+  name: Your Pipeline Name
+  on:
+    push:
+      branches: [main]
+  jobs:
+    # ... complete pipeline YAML
+  </optimised_yaml>
+
+  <metadata>
   {
-    "optimised_yaml": "complete YAML string with changes applied",
     "applied_fixes": [
       {
         "issue": "brief description matching an issue from the plan",
@@ -96,26 +111,39 @@ OPTIMISER_EXECUTION_SYSTEM_PROMPT = """You are implementing an optimisation plan
     ],
     "verification": "brief confirmation that changes were applied correctly and safely"
   }
+  </metadata>
 
-  Only include fixes in "applied_fixes" that are actually present in "optimised_yaml".
-  If a recommended change would break workflow safety, SKIP it and note in verification.
+  **IMPORTANT:**
+  - The YAML goes inside <optimised_yaml> tags WITHOUT any escaping
+  - The metadata goes inside <metadata> tags as valid JSON
+  - Only include fixes in "applied_fixes" that are actually present in the YAML
+  - If a recommended change would break workflow safety, SKIP it and note in verification
 """
 
 
 def build_analysis_user_prompt(pipeline_yaml: str) -> str:
     """Build user prompt for analysis stage."""
-    return f"Analyze this GitHub Actions pipeline:\n\n```yaml\n{pipeline_yaml}\n```"
+    return f"Analyse this GitHub Actions pipeline:\n\n```yaml\n{pipeline_yaml}\n```"
 
 
 def build_execution_user_prompt(pipeline_yaml: str, analysis: Dict[str, Any]) -> str:
     """Build user prompt for execution stage."""
     return f"""Original Pipeline:
-      ```yaml
-      {pipeline_yaml}
-      ```
+    ```yaml
+    {pipeline_yaml}
+    ```
 
-      Analysis Results:
-      {json.dumps(analysis, indent=2)}
+    Analysis Results:
+    {json.dumps(analysis, indent=2)}
 
-      Apply the recommended changes from the analysis to generate an optimised pipeline.
+    Apply the recommended changes from the analysis to generate an optimised pipeline.
+
+    Remember to format your response using the XML-style tags:
+    <optimised_yaml>
+    ... your optimised YAML here ...
+    </optimised_yaml>
+
+    <metadata>
+    ... your JSON metadata here ...
+    </metadata>
     """

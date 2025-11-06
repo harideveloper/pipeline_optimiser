@@ -1,6 +1,5 @@
 """
-Logging utility for the Pipeline Optimizer application.
-Provides centralized logging configuration and management.
+Logging utility for the Pipeline Optimiser application.
 """
 
 import logging
@@ -8,24 +7,31 @@ import sys
 import os
 from typing import Optional
 from pathlib import Path
+from datetime import datetime
 
 
 class CorrelationIdFormatter(logging.Formatter):
     """
-    Custom formatter that includes correlation_id in structured format.
-    
-    Format: timestamp | level | class | correlation_id | message
+    Custom log format: timestamp | level | class | correlation_id | message
     """
     
+    def formatTime(self, record, datefmt=None):
+        """
+        Format: YYYY-MM-DD HH:MM:SS.mmm
+        """
+        ct = datetime.fromtimestamp(record.created)
+        if datefmt:
+            s = ct.strftime(datefmt)
+            s = f"{s}.{int(record.msecs):03d}"
+        else:
+            s = ct.strftime("%Y-%m-%d %H:%M:%S")
+            s = f"{s}.{int(record.msecs):03d}"
+        return s
+    
     def format(self, record: logging.LogRecord) -> str:
-        # Extract correlation_id and class_name from extra
         correlation_id = getattr(record, 'correlation_id', 'N/A')
         class_name = getattr(record, 'class_name', 'N/A')
-        
-        # Format timestamp
         timestamp = self.formatTime(record, self.datefmt)
-        
-        # Build structured log line (simplified format)
         parts = [
             timestamp,
             record.levelname,
@@ -36,7 +42,6 @@ class CorrelationIdFormatter(logging.Formatter):
         
         log_line = " | ".join(parts)
         
-        # Add exception info if present
         if record.exc_info:
             log_line += "\n" + self.formatException(record.exc_info)
         
@@ -50,9 +55,7 @@ def setup_logging(
     include_timestamp: bool = True
 ) -> None:
     """
-    Configure application-wide logging with standardized format.
-    
-    Format: timestamp | level | class | correlation_id | message
+    Log Format: timestamp | level | class | correlation_id | message
     
     Args:
         level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
@@ -70,6 +73,7 @@ def setup_logging(
     if log_file is None:
         log_file = os.getenv("LOG_FILE")
     
+    # Date format now with milliseconds support
     date_format = "%Y-%m-%d %H:%M:%S" if include_timestamp else None
     formatter = CorrelationIdFormatter(datefmt=date_format)
     
@@ -122,7 +126,7 @@ def _configure_third_party_loggers():
 
 class ContextLogger:
     """
-    Logger wrapper that automatically includes correlation_id and class context.
+    Logger wrapper for class context.
     
     Usage:
         logger = ContextLogger(__name__, self.__class__.__name__)

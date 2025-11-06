@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, List
 
 from app.components.base_service import BaseService
 from app.utils.logger import get_logger
-from app.utils.llm_client import LLMClient
+from app.llm.llm_client import LLMClient
 from app.config import config
 from app.exceptions import OptimiserError
 from app.components.optimise.prompt import (
@@ -34,8 +34,8 @@ class Optimiser(BaseService):
         
         self.llm_client = LLMClient(model=self.model, temperature=self.temperature)
         
-        logger.info(
-            f"Initialized PipelineOptimiser: model={self.model}, temperature={self.temperature}, max_tokens={self.max_tokens}",
+        logger.debug(
+            f"Initialised Optimiser: model={self.model}, temperature={self.temperature}, max_tokens={self.max_tokens}",
             correlation_id="INIT"
         )
 
@@ -133,7 +133,8 @@ class Optimiser(BaseService):
         user_prompt = build_execution_user_prompt(pipeline_yaml, analysis)
         try:
             raw_result = self._call_llm(system_prompt=OPTIMISER_EXECUTION_SYSTEM_PROMPT, user_prompt=user_prompt, correlation_id=correlation_id)
-            execution = self.llm_client.parse_json_response(raw_result, correlation_id)
+            # execution = self.llm_client.parse_json_response(raw_result, correlation_id)
+            execution = self.llm_client.parse_optimiser_response(raw_result, correlation_id)
             
             if "optimised_yaml" not in execution:
                 raise OptimiserError("Execution response missing optimised_yaml")

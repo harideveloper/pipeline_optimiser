@@ -28,7 +28,7 @@ class DatabasePool:
         return cls._instance
     
     def __init__(self):
-        """Initialize connection pool if not already initialized."""
+        """Initialise connection pool if not already initialised."""
         if self._pool is None:
             try:
                 self._pool = psycopg2.pool.SimpleConnectionPool(
@@ -42,7 +42,7 @@ class DatabasePool:
                     cursor_factory=psycopg2.extras.RealDictCursor
                 )
                 logger.info(
-                    f"Database connection pool initialized: "
+                    f"Database connection pool initialised: "
                     f"minconn=1, maxconn={config.DB_POOL_SIZE}",
                     correlation_id="SYSTEM"
                 )

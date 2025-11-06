@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional, List
 
 from app.components.base_service import BaseService
 from app.utils.logger import get_logger
-from app.utils.llm_client import LLMClient
+from app.llm.llm_client import LLMClient
 from app.config import config
 from app.exceptions import CriticError
 from app.components.critique.prompt import (
@@ -34,7 +34,7 @@ class Critic(BaseService):
         
         self.llm_client = LLMClient(model=self.model, temperature=self.temperature)
         
-        logger.info(f"Initialized Critic with model={self.model}", correlation_id="INIT")
+        logger.debug(f"Initialised Critic with model={self.model}", correlation_id="INIT")
 
     def run(
         self,

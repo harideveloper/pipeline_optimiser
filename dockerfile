@@ -1,10 +1,7 @@
-# Base stage
 FROM python:3.11-slim AS base
 
-# Copy Zscaler root CA (local docker)
+# fix : Copy Zscaler root CA (local docker) due to zcaler proxy blocking requests
 COPY zscaler-root-ca.crt /usr/local/share/ca-certificates/zscaler-root-ca.crt
-
-# Install system dependencies + ssl certs
 RUN apt-get update && apt-get install -y \
     git \
     gcc \
@@ -14,28 +11,25 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && update-ca-certificates
 
-# Validate CA bundle was updated
+
 RUN echo "CA certificates count:" && \
     grep -c "BEGIN CERTIFICATE" /etc/ssl/certs/ca-certificates.crt || echo "0"
-
 
 WORKDIR /app
 RUN useradd -m -u 1000 pipeline && chown -R pipeline:pipeline /app
 USER pipeline
 
-
-# Install dependencies
 FROM base AS deps
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ADD: Append Zscaler cert to certifi's bundle (as pipeline user)
+# debug: Append Zscaler cert to certifi's bundle (as pipeline user)
 RUN python -c "import certifi; print(certifi.where())" && \
     cat /usr/local/share/ca-certificates/zscaler-root-ca.crt >> $(python -c "import certifi; print(certifi.where())") && \
     echo "Zscaler certificate added to certifi bundle"
 
-# Verify the cert was added
+# debug: verify the cert was added
 RUN python -c "import certifi; import os; bundle=certifi.where(); print(f'Certifi bundle: {bundle}'); print(f'Exists: {os.path.exists(bundle)}'); print(f'Size: {os.path.getsize(bundle)} bytes')"
 
 
@@ -47,7 +41,7 @@ COPY --chown=pipeline:pipeline . .
 
 ENV PATH="/home/pipeline/.local/bin:$PATH"
 
-# ADD: Use system CA bundle as fallback
+# temporary - to be removed 
 ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 ENV REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 

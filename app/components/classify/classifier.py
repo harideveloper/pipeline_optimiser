@@ -53,9 +53,9 @@ class Classifier(BaseService):
     """
 
     def __init__(self):
-        """Initialize Classifier."""
+        """Initialise Classifier."""
         super().__init__(agent_name="classify")
-        logger.debug("Initialized Classifier", correlation_id="INIT")
+        logger.debug("Initialised Classifier", correlation_id="INIT")
 
     def run(self, **kwargs) -> Any:
         """
@@ -229,7 +229,7 @@ class Classifier(BaseService):
         # Get triggers (handle both 'on' and True keys due to YAML parsing)
         triggers = workflow.get('on', workflow.get(True, {}))
         
-        # Normalize triggers to dictionary format
+        # Normalise triggers to dictionary format
         if isinstance(triggers, str):
             triggers = {triggers: {}}
         elif isinstance(triggers, list):

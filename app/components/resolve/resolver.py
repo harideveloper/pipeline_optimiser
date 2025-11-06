@@ -1,6 +1,5 @@
 """
 Enhanced Resolver Agent - Resolves pipeline issues by creating PRs with optimised YAML.
-Now includes comprehensive LLM review confidence information in PR comments.
 """
 
 from typing import Dict, Any, Optional
@@ -20,13 +19,11 @@ class Resolver(BaseService):
     """
     Handles resolution of pipeline issues by pushing optimised YAML 
     to GitHub and creating a pull request.
-    
-    Enhanced with detailed LLM review confidence information.
     """
 
     def __init__(self, gh_token: Optional[str] = None):
         """
-        Initialize Resolver with GitHub authentication.
+        Initialise Resolver with GitHub authentication.
         
         Args:
             gh_token: GitHub personal access token (defaults to config.GITHUB_TOKEN)
@@ -84,14 +81,11 @@ class Resolver(BaseService):
         if not optimised_yaml or not optimised_yaml.strip():
             raise ResolverError("optimised_yaml is required and cannot be empty")
         
-        # Create branch name
+        # Create target branch name with correlation id suffix
         pr_branch = f"optimise-pipeline-{correlation_id}" if correlation_id else "optimise-pipeline"
-        
-        # Extract repository name from URL
         repo_name = self._extract_repo_name(repo_url)
         
         try:
-            # Get repository
             repo = self.gh.get_repo(repo_name)
             
             # Create branch
@@ -154,7 +148,6 @@ class Resolver(BaseService):
             return state
 
         try:
-            # Create PR with LLM review data
             pr_url = self.run(
                 repo_url=state["repo_url"],
                 optimised_yaml=state["optimised_yaml"],
@@ -171,7 +164,7 @@ class Resolver(BaseService):
                 state["pr_url"] = pr_url
                 logger.info(f"PR created: {pr_url}", correlation_id=correlation_id)
                 
-                # Save PR to database
+                # Save PR info to database
                 branch_name = f"optimise-pipeline-{correlation_id}" if correlation_id else "optimise-pipeline"
                 try:
                     self.repository.save_pr(
@@ -214,12 +207,10 @@ class Resolver(BaseService):
         Raises:
             ResolverError: If URL is invalid
         """
-        # Remove trailing slashes
+
         url = repo_url.rstrip("/")
         
-        # Handle different URL formats
         if "github.com/" in url:
-            # Extract owner/repo from URL
             parts = url.split("github.com/")[1].split("/")
             if len(parts) >= 2:
                 return f"{parts[0]}/{parts[1].replace('.git', '')}"
@@ -246,7 +237,7 @@ class Resolver(BaseService):
         base_ref = repo.get_git_ref(f"heads/{base_branch}")
         base_sha = base_ref.object.sha
         
-        # Create new branch
+        # Create target branch
         try:
             repo.create_git_ref(ref=f"refs/heads/{pr_branch}", sha=base_sha)
             logger.debug(f"Created branch: {pr_branch}", correlation_id=correlation_id)
@@ -417,7 +408,6 @@ class Resolver(BaseService):
     def _add_critic_review_section(self, body_parts: list, critic_review: Dict[str, Any]) -> None:
         """
         Add compact LLM review information to PR body.
-        Professional format without emojis, organized and space-efficient.
         """
         body_parts.append("\n---\n\n## Critic Review\n\n")
         

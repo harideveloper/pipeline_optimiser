@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 
 from app.components.base_service import BaseService
 from app.utils.logger import get_logger
-from app.utils.llm_client import LLMClient
+from app.llm.llm_client import LLMClient
 from app.config import config
 from app.exceptions import RiskAssessorError
 from app.components.risk.prompt import RISK_ASSESSOR_SYSTEM_PROMPT, build_risk_context

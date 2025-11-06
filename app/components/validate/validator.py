@@ -32,7 +32,7 @@ class Validator(BaseService):
     REQUIRED_KEYS = ["on", "jobs"]
 
     def __init__(self):
-        """Initialize Validator."""
+        """Initialise Validator."""
         super().__init__(agent_name="validate")
         logger.debug("Initialised Validator", correlation_id="INIT")
 
@@ -82,8 +82,8 @@ class Validator(BaseService):
             }
 
         # Check 1: Required keys
-        normalized_keys = self._normalize_keys(list(parsed_yaml.keys()))
-        missing_keys = [k for k in self.REQUIRED_KEYS if k not in normalized_keys]
+        normalised_keys = self._normalise_keys(list(parsed_yaml.keys()))
+        missing_keys = [k for k in self.REQUIRED_KEYS if k not in normalised_keys]
         
         if missing_keys:
             missing_str = ", ".join(missing_keys)
@@ -245,9 +245,9 @@ class Validator(BaseService):
             logger.error(f"YAML parsing error: {e}", correlation_id=correlation_id)
             return None
 
-    def _normalize_keys(self, keys: List[Any]) -> List[str]:
+    def _normalise_keys(self, keys: List[Any]) -> List[str]:
         """
-        Normalize YAML top-level keys.
+        Normalise YAML top-level keys.
         
         Handles YAML parser quirks where 'on' may be parsed as boolean True.
         
@@ -255,17 +255,17 @@ class Validator(BaseService):
             keys: List of raw keys from parsed YAML
             
         Returns:
-            List of normalized string keys
+            List of normalised string keys
         """
-        normalized = []
+        normalised = []
         for key in keys:
             if key is True:
-                normalized.append("on")
+                normalised.append("on")
             elif key is False:
-                normalized.append("off")
+                normalised.append("off")
             else:
-                normalized.append(str(key))
-        return normalized
+                normalised.append(str(key))
+        return normalised
 
     def _check_dependencies(
         self, 

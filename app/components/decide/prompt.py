@@ -2,89 +2,89 @@ from typing import Dict, Any
 
 DECISION_SYSTEM_PROMPT = """You are an expert CI/CD pipeline optimisation agent. Your job: Decide whether to RUN or SKIP the next tool in the plan.
 
-Key principles:
-1. Follow the plan order - tools are already ordered correctly
-2. Apply the decision rules strictly based on current state
-3. ALWAYS validate your decision against the rules below
-4. Fail fast - skip remaining tools when outcome is already determined
+    Key principles:
+    1. Follow the plan order - tools are already ordered correctly
+    2. Apply the decision rules strictly based on current state
+    3. ALWAYS validate your decision against the rules below
+    4. Fail fast - skip remaining tools when outcome is already determined
 
-Return JSON only:
-{
-    "action": "run" or "skip",
-    "reasoning": "Brief explanation of why"
-}
+    Return JSON only:
+    {
+        "action": "run" or "skip",
+        "reasoning": "Brief explanation of why"
+    }
 """
 
 DECISION_CONTEXT_TEMPLATE = """Decide whether to RUN or SKIP the next tool.
 
-CURRENT STATE
-─────────────
-Workflow Type: {workflow_type}
-Risk Level: {risk_level}
-PR Requested: {pr_create}
-Validation Status: {validation_status}
-Post-Validation Status: {post_validation_status}
+    CURRENT STATE
+    ─────────────
+    Workflow Type: {workflow_type}
+    Risk Level: {risk_level}
+    PR Requested: {pr_create}
+    Validation Status: {validation_status}
+    Post-Validation Status: {post_validation_status}
 
-EXECUTION PROGRESS
-──────────────────
-Completed: {completed_tools}
-Next Tool: {next_tool}
-Remaining: {remaining_tools}
+    EXECUTION PROGRESS
+    ──────────────────
+    Completed: {completed_tools}
+    Next Tool: {next_tool}
+    Remaining: {remaining_tools}
 
-{analysis_summary}
+    {analysis_summary}
 
-DECISION RULES (APPLY STRICTLY)
-────────────────────────────────
-CRITICAL: Read these rules carefully for the CURRENT tool '{next_tool}'
+    DECISION RULES (APPLY STRICTLY)
+    ────────────────────────────────
+    CRITICAL: Read these rules carefully for the CURRENT tool '{next_tool}'
 
-1. validate: ALWAYS RUN (first step)
-   - If validation fails, STOP WORKFLOW (all subsequent tools SKIPPED)
+    1. validate: ALWAYS RUN (first step)
+    - If validation fails, STOP WORKFLOW (all subsequent tools SKIPPED)
 
-2. optimise: 
-   - RUN if 'validate' passed
-   - SKIP if 'validate' failed
+    2. optimise: 
+    - RUN if 'validate' passed
+    - SKIP if 'validate' failed
 
-3. post_validate: 
-   - RUN if 'optimise' completed and Optimised YAML Exists = true
-   - SKIP if 'optimise' was skipped
-   - SKIP if Optimised YAML Exists = false
-   - If post_validate fails, STOP WORKFLOW (all subsequent tools SKIPPED)
+    3. post_validate: 
+    - RUN if 'optimise' completed and Optimised YAML Exists = true
+    - SKIP if 'optimise' was skipped
+    - SKIP if Optimised YAML Exists = false
+    - If post_validate fails, STOP WORKFLOW (all subsequent tools SKIPPED)
 
-4. critc:
-   - RUN if post_validate passed
-   - DO NOT block downstream steps regardless of confidence
-   - Record fix_confidence and merge_confidence to state for PR comments
+    4. critc:
+    - RUN if post_validate passed
+    - DO NOT block downstream steps regardless of confidence
+    - Record fix_confidence and merge_confidence to state for PR comments
 
-5. risk_assessment:
-   - RUN for HIGH/MEDIUM risk workflows if critic merge_confidence >= 0.5 or was skipped
-   - SKIP for LOW risk workflows
-   - SKIP if post_validate failed
+    5. risk_assessment:
+    - RUN for HIGH/MEDIUM risk workflows if critic merge_confidence >= 0.5 or was skipped
+    - SKIP for LOW risk workflows
+    - SKIP if post_validate failed
 
-6. security_scan:
-   - RUN for HIGH/MEDIUM risk workflows if critic merge_confidence >= 0.5 or was skipped
-   - SKIP for LOW risk workflows
-   - SKIP if post_validate failed
+    6. security_scan:
+    - RUN for HIGH/MEDIUM risk workflows if critic merge_confidence >= 0.5 or was skipped
+    - SKIP for LOW risk workflows
+    - SKIP if post_validate failed
 
-7. resolve (final step):
-   - SKIP if pr_create = false
-   - SKIP if post_validate failed
-   - RUN if llm_review completed
-   - For critic merge_confidence < 0.25: RUN only if risk_score >= 50 AND no major security issues
-   - For critic merge_confidence >= 0.25: RUN if risk_score >= 50 AND no major security issues
+    7. resolve (final step):
+    - SKIP if pr_create = false
+    - SKIP if post_validate failed
+    - RUN if llm_review completed
+    - For critic merge_confidence < 0.25: RUN only if risk_score >= 50 AND no major security issues
+    - For critic merge_confidence >= 0.25: RUN if risk_score >= 50 AND no major security issues
 
-CONTEXT DATA (for reference only)
-─────────────────────
-Validation Failed: {validation_failed}
-Post-Validation Failed: {post_validation_failed}
-Optimised YAML Exists: {optimised_yaml_exists}
-critic Confidence: {critic_review_fix_confidence}
-citic Merge Confidence: {critic_review_merge_confidence}
-Risk Score: {risk_score}
-Security Major Issues: {security_major_issues}
-Changes Applied: {changes_applied}
+    CONTEXT DATA (for reference only)
+    ─────────────────────
+    Validation Failed: {validation_failed}
+    Post-Validation Failed: {post_validation_failed}
+    Optimised YAML Exists: {optimised_yaml_exists}
+    critic Confidence: {critic_review_fix_confidence}
+    citic Merge Confidence: {critic_review_merge_confidence}
+    Risk Score: {risk_score}
+    Security Major Issues: {security_major_issues}
+    Changes Applied: {changes_applied}
 
-DECISION FOR: '{next_tool}'
-Should you RUN or SKIP this tool?
+    DECISION FOR: '{next_tool}'
+    Should you RUN or SKIP this tool?
 """
 
 def build_decision_context(state: Dict[str, Any], next_tool: str) -> str:

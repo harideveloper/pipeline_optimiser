@@ -3,7 +3,7 @@ Custom exceptions for Pipeline Optimiser
 """
 
 class PipelineOptimiserError(Exception):
-    """Base exception for all pipeline optimizer errors"""
+    """Base exception for all pipeline optimiser errors"""
     pass
 
 class DecisionError(PipelineOptimiserError):

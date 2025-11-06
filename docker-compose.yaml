@@ -1,0 +1,57 @@
+
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: pipeline-db
+    env_file:
+      - .env-docker
+    environment:
+      POSTGRES_DB: ${DB_NAME:-pipeline_db}
+      POSTGRES_USER: ${DB_USER:-pipeline_user}
+      POSTGRES_PASSWORD: ${DB_PASS:-pipeline_pass}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init_pipeline_db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-pipeline_user} -d ${DB_NAME:-pipeline_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pipeline-network
+
+  # Application
+  app:
+    build:
+      context: .
+      target: development
+    container_name: pipeline-optimiser
+    env_file:
+      - .env-docker
+    ports:
+      - "${API_PORT:-8000}:8000"
+    volumes:
+      - .:/app
+      - /app/.venv
+      - ./logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - pipeline-network
+    profiles:
+      - dev
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  pipeline-network:
+    driver: bridge

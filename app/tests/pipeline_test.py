@@ -6,10 +6,10 @@ setup_logging()
 logger = get_logger(__name__, "PipelineTestAgent")
 
 # env vars
-endpoint = "http://localhost:8000/optimise"
+endpoint = "http://localhost:8091/optimise"
 repo_url = "https://github.com/harideveloper/multi-tech-test-repo"
-pipeline_path_in_repo = ".github/workflows/pipeline2.yaml"
-build_log_path_in_repo = ".github/workflows/pipeline2.log"
+pipeline_path_in_repo = "github/workflows/pipeline2.yaml"
+build_log_path_in_repo = "github/workflows/pipeline2.log"
 branch = "main"
 pr_create = True
 
