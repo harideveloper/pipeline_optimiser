@@ -21,7 +21,7 @@ load-env:
 	@export $$(grep -v '^#' .env | xargs)
 
 # App
-run:
+start:
 	$(PYTHON) -m uvicorn app.main:app --host 0.0.0.0 --port 8091 --reload
 
 optimise:
@@ -29,6 +29,9 @@ optimise:
 
 test-components:
 	PYTHONPATH=. $(PYTHON) -m pytest app/components -v
+
+test-evaluation:
+	PYTHONPATH=. $(PYTHON) -m pytest app/tests/evaluation -v
 
 clean:
 	rm -rf $(VENV) __pycache__ .pytest_cache

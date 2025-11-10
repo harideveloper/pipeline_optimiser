@@ -64,7 +64,7 @@ class PipelineOrchestrator:
         workflow.add_edge("execute", "decide")
         return workflow.compile()
 
-    def run(self, repo_url: str, pipeline_path: str, build_log_path: str = None, branch: str = "main", pr_create: bool = False) -> Dict[str, Any]:
+    async def run(self, repo_url: str, pipeline_path: str, build_log_path: str = None, branch: str = "main", pr_create: bool = False) -> Dict[str, Any]:
         correlation_id = generate_correlation_id()
         
         # Start run with pipeline_path (required)
@@ -111,7 +111,7 @@ class PipelineOrchestrator:
         
         try:
             start_time = datetime.now()
-            final_state = self.graph.invoke(initial_state)
+            final_state = await self.graph.ainvoke(initial_state)  # Changed to ainvoke
             duration = (datetime.now() - start_time).total_seconds()
 
             self._log_summary(final_state, duration)

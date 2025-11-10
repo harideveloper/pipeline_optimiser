@@ -2,8 +2,6 @@
 Pipeline Optimiser - Two-stage LLM based pipeline optimisation.
 """
 
-
-
 import json
 import yaml
 from typing import Dict, Any, Optional, List

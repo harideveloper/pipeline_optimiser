@@ -106,7 +106,7 @@ async def optimise_pipeline(request: OptimiseRequest):
 
     try:
         orchestrator = PipelineOrchestrator()
-        result = orchestrator.run(
+        result = await orchestrator.run(
             repo_url=request.repo_url,
             pipeline_path=request.pipeline_path_in_repo,
             build_log_path=request.build_log_path_in_repo,
