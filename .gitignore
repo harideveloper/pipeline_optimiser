@@ -18,17 +18,13 @@ venv/
 .env.bak/
 .venv/
 
-# Byte-compiled / cache
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.pdb
-
 # ------------------------------------------------------------------------------
 # ENVIRONMENT & CONFIG
 # ------------------------------------------------------------------------------
 # Secrets and credentials
+.env
+.env-docker
+.env-gcp
 *.env.local
 *.env.production
 .envrc
@@ -37,11 +33,44 @@ __pycache__/
 *.crt
 *.cert
 *.csr
+zscaler*
 
-# macOS system files
-.DS_Store
-.AppleDouble
-.LSOverride
+# ------------------------------------------------------------------------------
+# TERRAFORM
+# ------------------------------------------------------------------------------
+# Local .terraform directories
+**/.terraform/*
+
+# .tfstate files contain sensitive data
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+*.terraform.lock.hcl
+
+# Crash log files
+crash.log
+crash.*.log
+
+# Exclude all .tfvars files (may contain sensitive data)
+*.tfvars
+*.tfvars.json
+
+# Ignore override files
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Ignore CLI configuration files
+.terraformrc
+terraform.rc
+
+# Terraform plan files
+*.tfplan
+*.tfplan.json
+
+# Terraform lock file (uncomment if you want to ignore it)
+# .terraform.lock.hcl
 
 # ------------------------------------------------------------------------------
 # LOGS AND OUTPUT
@@ -62,6 +91,11 @@ log/
 *.swo
 *.bak
 *.tmp
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
 
 # ------------------------------------------------------------------------------
 # BUILD / DISTRIBUTION
@@ -94,16 +128,16 @@ test-results/
 data/
 tmp/
 temp/
-.cache/
 __cache__/
 
 # ------------------------------------------------------------------------------
 # GENERATED ARTIFACTS
 # ------------------------------------------------------------------------------
-*.json
-*.yaml
-*.yml
-!app/config/default_config.yaml  # (if you keep one checked-in intentionally)
+# Be careful with wildcard ignores - consider whitelisting specific files
+# *.json
+# *.yaml
+# *.yml
+# Uncomment above if needed, but this may ignore legitimate config files
 
 # ------------------------------------------------------------------------------
 # DOCKER / DEPLOY
@@ -119,12 +153,21 @@ docker-compose.override.yml
 *.ipynb
 
 # ------------------------------------------------------------------------------
+# DATABASE
+# ------------------------------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+
+# ------------------------------------------------------------------------------
 # MISC
 # ------------------------------------------------------------------------------
 # Local dev files
 *.local
-*.bak
-*.swp
-*.swo
 
 
+# ------------------------------------------------------------------------------
+# deep eval
+# ------------------------------------------------------------------------------
+*.deepeval
+*app/tests/evaluation
