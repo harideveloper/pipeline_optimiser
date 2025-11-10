@@ -14,8 +14,13 @@ The system follows a multi-agent architecture where specialised agents collabora
 
 ## Architecture
 
-### Agent Pipeline
+### Detailed Design
      TBU 
+     <img width="1472" height="580" alt="Slide7" src="https://github.com/user-attachments/assets/3c816b33-1d59-4a17-b794-db4b41605980" />
+
+### Hosting Design
+     <img width="1536" height="1024" alt="Slide9A" src="https://github.com/user-attachments/assets/06874466-4df2-44ef-8417-8160a538fb26" />
+
 
 ### Core Components
 
