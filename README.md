@@ -1,67 +1,106 @@
-# Pipeline Optimiser
+# 🚀 Pipeline Optimiser
 
-An AI-powered CI/CD pipeline optimisation system that automatically analyses GitHub Actions workflows, identifies performance bottlenecks, and generates optimised configurations.
+<div align="center">
 
-## Overview
+**An AI-powered CI/CD pipeline optimisation system that automatically analyses GitHub Actions workflows, identifies performance bottlenecks, and generates optimised configurations.**
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![PostgreSQL 14+](https://img.shields.io/badge/postgresql-14+-blue.svg)](https://www.postgresql.org/)
+
+</div>
+
+---
+
+## 📋 Table of Contents
+
+- [Overview](#-overview)
+- [Architecture](#-architecture)
+- [Database Design](#-database-design)
+- [Setup](#-setup)
+- [Design Patterns](#-design-patterns)
+- [License](#-license)
+- [Acknowledgments](#-acknowledgments)
+
+---
+
+## 🎯 Overview
 
 Pipeline Optimiser uses Claude AI to intelligently analyse your CI/CD pipelines and suggest improvements for:
-- Missing dependency caching (npm, pip, Maven, Docker layers)
-- Parallelisation opportunities (removing unnecessary job dependencies)
-- Redundant steps and inefficient configurations
-- Security vulnerabilities
+
+- 📦 **Missing dependency caching** (npm, pip, Maven, Docker layers)
+- ⚡ **Parallelisation opportunities** (removing unnecessary job dependencies)
+- 🔄 **Redundant steps** and inefficient configurations
+- 🔒 **Security vulnerabilities**
 
 The system follows a multi-agent architecture where specialised agents collaborate to analyse, optimise, review, and optionally create pull requests with fixes.
 
-## Architecture
+---
 
-### Detailed Design
-     TBU 
-     <img width="1472" height="580" alt="Slide7" src="https://github.com/user-attachments/assets/3c816b33-1d59-4a17-b794-db4b41605980" />
+## 🏗️ Architecture
 
-### Hosting Design
-     <img width="1536" height="1024" alt="Slide9A" src="https://github.com/user-attachments/assets/06874466-4df2-44ef-8417-8160a538fb26" />
+### 📐 Detailed Design
 
+<div align="center">
+<img alt="Detailed Architecture Design" src="https://github.com/user-attachments/assets/3c816b33-1d59-4a17-b794-db4b41605980" />
+</div>
 
-### Core Components
+---
+### ☁️ Hosting Design
 
-**Agents/Tools:**
-- **Ingestor**: Fetches pipeline YAML and build logs from GitHub
-- **Classifier**: Determines workflow type (CI/CD/Both) and risk level (LOW/MEDIUM/HIGH)
-- **Decision**: LLM based routing, decides which agents to run based on context
-- **Validator**: Validates pipeline syntax and structure (Mode =input/output for pre and post validation)
-- **Optimiser**: Two-stage analysis and LLM bases optimisation
-- **Critic**: Reviews proposed changes for safety and quality
-- **Risk Assessment**: Scores the risk of applying changes
-- **Security Scanner**: Detects security issues in pipelines
-- **Resolver**: Creates GitHub pull requests with optimised YAML
+<div align="center">
+<img alt="Hosting Architecture Design" src="https://github.com/user-attachments/assets/06874466-4df2-44ef-8417-8160a538fb26" />
+</div>
 
-**Plan & Execution Logic:**
-- Classifier classifies the pipeline based on the risk profile
-- Classifier generates execution plan based on the risk profile 
-   Risk Profile = High | Execution : Validate -> Optimise --> Post Validate --> Critic --> Risk Assess --> Security Scan --> Resolve 
-   Risk Profile = Medium | Execution : Validate -> Optimise --> Post Validate --> Critic --> Security Scan --> Resolve 
-   Risk Profile = Low | Execution : Validate -> Optimise --> Post Validate --> Critic --> Resolve 
+### 🧩 Core Components
 
-**Decision Logic:**
-- Validation must pass before optimisation
-- Critic only runs if optimised YAML exists
-- Risk assessment skipped for LOW risk workflows
-- PR creation requires critic confidence >= 0.5
+#### **Agents/Tools:**
 
-## Database Design
+- **🔍 Ingestor** - Fetches pipeline YAML and build logs from GitHub
+- **🏷️ Classifier** - Determines workflow type (CI/CD/Both) and risk level (LOW/MEDIUM/HIGH)
+- **🧭 Decision** - LLM based routing, decides which agents to run based on context
+- **✅ Validator** - Validates pipeline syntax and structure (Mode = input/output for pre and post validation)
+- **⚙️ Optimiser** - Two-stage analysis and LLM based optimisation
+- **🎭 Critic** - Reviews proposed changes for safety and quality
+- **⚠️ Risk Assessment** - Scores the risk of applying changes
+- **🔒 Security Scanner** - Detects security issues in pipelines
+- **🔧 Resolver** - Creates GitHub pull requests with optimised YAML
+
+#### **📝 Plan & Execution Logic:**
+
+The Classifier classifies the pipeline based on the risk profile and generates an execution plan:
+
+| Risk Profile | Execution Flow |
+|--------------|----------------|
+| **High** | Validate → Optimise → Post Validate → Critic → Risk Assess → Security Scan → Resolve |
+| **Medium** | Validate → Optimise → Post Validate → Critic → Security Scan → Resolve |
+| **Low** | Validate → Optimise → Post Validate → Critic → Resolve |
+
+#### **🎯 Decision Logic:**
+
+- ✓ Validation must pass before optimisation
+- ✓ Critic only runs if optimised YAML exists
+- ✓ Risk assessment skipped for LOW risk workflows
+- ✓ PR creation requires critic confidence >= 0.5
+
+---
+
+## 🗄️ Database Design
 
 ### Schema Overview
 
-**Core Tables:**
-- `repositories`: Repository metadata and tracking
-- `runs`: Optimisation execution records with correlation IDs
-- `issues`: Detected pipeline problems (type, severity, location, fix)
-- `decisions`: Agent execution decisions (which tools ran and why)
-- `reviews`: Critic, risk, and security assessment results
-- `artifacts`: Generated YAML and intermediate analysis data
-- `prs`: Pull request tracking (URL, status, merge state)
+#### **Core Tables:**
 
-**Relationships:**
+- **`repositories`** - Repository metadata and tracking
+- **`runs`** - Optimisation execution records with correlation IDs
+- **`issues`** - Detected pipeline problems (type, severity, location, fix)
+- **`decisions`** - Agent execution decisions (which tools ran and why)
+- **`reviews`** - Critic, risk, and security assessment results
+- **`artifacts`** - Generated YAML and intermediate analysis data
+- **`prs`** - Pull request tracking (URL, status, merge state)
+
+#### **Relationships:**
+
 ```
 repositories (1) ──> (N) runs
 runs (1) ──> (N) issues
@@ -71,21 +110,24 @@ runs (1) ──> (N) artifacts
 runs (1) ──> (1) prs
 ```
 
-See `app/repository/sql/create.sql` for complete schema definition.
+> 📄 **See** `app/repository/sql/create.sql` for complete schema definition.
 
-## Setup
+---
+
+## 🛠️ Setup
 
 ### Prerequisites
 
-- Python 3.11+
-- PostgreSQL 14+
-- Anthropic API key
-- GitHub Personal Access Token
-- Make
+- 🐍 Python 3.11+
+- 🐘 PostgreSQL 14+
+- 🤖 Anthropic API key
+- 🔑 GitHub Personal Access Token
+- 🛠️ Make
 
 ### Installation
 
-1. **Clone and configure:**
+#### **1. Clone and configure:**
+
 ```bash
 git clone https://github.com/yourusername/pipeline-optimiser.git
 cd pipeline-optimiser
@@ -93,7 +135,8 @@ cp .env-example .env
 # Edit .env with your API keys
 ```
 
-2. **Setup everything using Make:**
+#### **2. Setup everything using Make:**
+
 ```bash
 # Install dependencies and setup database
 make setup
@@ -106,66 +149,130 @@ make test-all
 make test-components
 
 # Run sample tests (actual llm call)
-# Edit the app/tests/pipeline_test.py with your test repo, pipeline_path, run the below make command to test few sample request making actual llm call
+# Edit the app/tests/pipeline_test.py with your test repo, pipeline_path
+# Run the below make command to test few sample requests making actual llm call
 make optimise
 ```
 
-## Design Patterns
+---
 
-### Application Design Patterns
+## 🧩 Design Patterns
 
-#### Repository Pattern
-Database operations abstracted through `PipelineRepository` class, separating business logic from data persistence. Makes testing easier and allows database changes without affecting agents.
+This section outlines the core software design patterns implemented in the **Pipeline Optimiser**, ensuring scalability, maintainability, and clean separation of concerns.
 
-**Benefit:** Clean separation of concerns and database implementation can change without affecting business logic.
+---
 
-#### Singleton Pattern
-Database connection pool implemented as singleton to reuse connections efficiently and prevent connection exhaustion.
+### ⚙️ Application Design Patterns
 
-**Benefit:** Efficient connection reuse and prevents resource exhaustion with centralized pool management.
+#### 🗂️ Repository Pattern
 
-#### Facade Pattern
-`LLMClient` provides simplified interface to Anthropic API, hiding complexity and centralising error handling. Makes it easy to swap LLM providers.
+All database operations are abstracted through the `PipelineRepository` class.
 
-**Benefit:** Simple interface for agents with centralized error handling and easy provider switching.
+This separates **business logic** from **data persistence**, making testing easier and allowing database layer changes without impacting the application logic.
 
-#### Template Pattern
-`BaseService` base class defines common execution flow (logging, error handling), while subclasses implement specific `_execute()` logic. Ensures consistent behavior across agents.
+> **✨ Benefit:** Enables a clean separation of concerns and flexible database implementations.
 
-**Benefit:** Consistent execution flow and reusable logging/error handling across all agents.
+---
 
-#### Dependency Injection
-Services receive dependencies (LLMClient, Repository) through constructor injection, enabling loose coupling and easy testing with mocks.
+#### 🔁 Singleton Pattern
 
-**Benefit:** Loose coupling enables easy testing with mocks and configurable behavior.
+The database connection pool is implemented as a **singleton**, ensuring all components reuse the same connection instance.
 
-#### Observer Pattern
-Correlation IDs propagate through all components for distributed tracing. Every log and database operation includes correlation_id for end-to-end request tracking.
+This prevents connection exhaustion and optimizes resource management.
 
-**Benefit:** End-to-end request tracking across all components for easier debugging and audit trails.
+> **✨ Benefit:** Efficient connection reuse with centralized and controlled resource management.
 
+---
 
-### Agent Design Patterns
+#### 🎭 Facade Pattern
 
-#### Plan/Execute Pattern
-Agent pipeline where each component processes the request and passes to the next. Decision agent dynamically routes based on context (`Ingestor → Classifier → Decision → Validator → Optimiser → Critic → Resolver`).
+The `LLMClient` serves as a **facade** for the Anthropic API, providing a simplified interface that hides low-level complexity.
 
-**Benefit:** Loose coupling between agents with dynamic execution flow based on rules.
+This centralizes error handling and makes it easy to switch between LLM providers.
 
-#### Two-Phase Commit
-Optimiser uses two stages: Analysis phase (identify issues) followed by Execution phase (apply fixes). Enables better error handling and rollback capabilities.
+> **✨ Benefit:** Simplified API usage with centralized error handling and flexible provider integration.
 
-**Benefit:** Clear separation between analysis and modification with better error handling and rollback support.
+---
 
-#### Critic Pattern
-Critic agent reviews Optimiser's generated YAML for safety, quality, and correctness before allowing PR creation. Acts as a quality gate with confidence scoring.
+#### 🧱 Template Pattern
 
-**Benefit:** Prevents unsafe changes from being applied and provides confidence scoring for automated decision-making.
+The `BaseService` class defines a **common execution flow**—including logging, validation, and error handling—while subclasses implement their specific `_execute()` logic.
 
-## License
+This ensures consistency across all agent services.
 
-This project is licensed under the MIT License - see [LICENSE](LICENSE) for details.
+> **✨ Benefit:** Consistent execution flow with reusable logging and error handling.
 
-## Acknowledgments
+---
+
+#### 🧩 Dependency Injection
+
+Dependencies (e.g., `LLMClient`, `PipelineRepository`) are injected through constructors, enabling components to operate independently of specific implementations.
+
+This improves testability and supports flexible configuration.
+
+> **✨ Benefit:** Loose coupling and easy unit testing using mocks or alternate implementations.
+
+---
+
+#### 👁️ Observer Pattern
+
+A **correlation ID** is propagated through all components, ensuring each log entry and database operation can be traced back to the original request.
+
+This enables distributed tracing and full visibility across the pipeline.
+
+> **✨ Benefit:** End-to-end traceability for debugging, auditing, and monitoring.
+
+---
+
+### 🤖 Agent Design Patterns
+
+#### 🧭 Plan–Execute Pattern
+
+The agent pipeline follows a sequential **plan–execute flow**, where each stage processes input and passes results downstream:
+
+`Ingestor → Classifier → Decision → Validator → Optimiser → Critic → Resolver`
+
+The **Decision Agent** dynamically routes requests based on contextual rules.
+
+> **✨ Benefit:** Flexible, loosely coupled agent interactions with dynamic routing.
+
+---
+
+#### ⚖️ Two-Phase Commit Pattern
+
+The Optimiser runs in two distinct stages:
+
+1. **Analysis Phase** – Identifies issues and determines required changes.
+2. **Execution Phase** – Applies the fixes safely and reliably.
+
+This structure supports rollback and improves reliability.
+
+> **✨ Benefit:** Safe, reversible changes with clear separation of analysis and execution.
+
+---
+
+#### 🧠 Critic Pattern
+
+The **Critic Agent** reviews all Optimiser-generated YAML configurations for safety, quality, and correctness before they are merged.
+
+It acts as a **quality gate**, assigning confidence scores and blocking unsafe updates.
+
+> **✨ Benefit:** Ensures output integrity, prevents unsafe changes, and supports automated decision-making.
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see LICENSE for details.
+
+---
+
+## 🙏 Acknowledgments
 
 **Questions or Issues?** Open an issue on GitHub.
+
+---
+
+<div align="center">
+Generated Document
+</div>
